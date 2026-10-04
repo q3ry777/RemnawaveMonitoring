@@ -1,0 +1,21 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="Bg" Color="#F6F4EF"/>
+    <SolidColorBrush x:Key="BgAlt" Color="#EDEAE2"/>
+    <SolidColorBrush x:Key="Panel" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Line" Color="#DDD9CE"/>
+    <SolidColorBrush x:Key="Fg" Color="#14161A"/>
+    <SolidColorBrush x:Key="Dim" Color="#6B7280"/>
+    <SolidColorBrush x:Key="Amber" Color="#C77D00"/>
+    <SolidColorBrush x:Key="AmberFg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Green" Color="#15803D"/>
+    <SolidColorBrush x:Key="Red" Color="#DC2626"/>
+    <SolidColorBrush x:Key="RedTint" Color="#1ADC2626"/>
+    <SolidColorBrush x:Key="AmberTint" Color="#1AC77D00"/>
+    <Color x:Key="GlowGreen">#22C55E</Color>
+    <RadialGradientBrush x:Key="Glow" Center="0.5,0" GradientOrigin="0.5,0" RadiusX="0.7" RadiusY="1">
+        <GradientStop Color="#18FFB020" Offset="0"/>
+        <GradientStop Color="#00FFB020" Offset="1"/>
+    </RadialGradientBrush>
+    <SolidColorBrush x:Key="Scan" Color="Transparent"/>
+</ResourceDictionary>
