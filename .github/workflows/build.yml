@@ -31,9 +31,7 @@ jobs:
 
       - name: Zip
         shell: pwsh
-        run: |
-          # Убеждаемся, что архив создается из всех файлов в папке out
-          Compress-Archive -Path out\* -DestinationPath RemnawaveMonitor-win-x64.zip -Force
+        run: Compress-Archive -Path out\* -DestinationPath RemnawaveMonitor-win-x64.zip -Force
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -41,3 +39,4 @@ jobs:
         with:
           files: RemnawaveMonitor-win-x64.zip
           generate_release_notes: true
+          overwrite: true
