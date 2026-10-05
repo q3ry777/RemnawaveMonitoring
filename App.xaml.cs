@@ -25,6 +25,7 @@ public partial class App : Application
     readonly IncidentLog _log = IncidentLog.Load();
     IncidentsWindow? _journal;
     bool _balloonIncident;
+    DateTime _balloonShownAt = DateTime.MinValue;
     readonly DispatcherTimer _ruTimer = new();
     readonly DispatcherTimer _relTimer = new();
     readonly Dictionary<string, (string text, string level)> _ru = new();
@@ -108,6 +109,13 @@ public partial class App : Application
         _tray.DoubleClick += (_, _) => ShowWin();
         // клик по уведомлению о проблеме открывает журнал и сбрасывает красную иконку
         _tray.BalloonTipClicked += (_, _) => { if (_balloonIncident) { OpenJournal(); AckAll(); } else ShowWin(); };
+        // Если уведомление о проблеме закрыли крестиком (быстро, но не мгновенно) — считаем его прочитанным и красим иконку в зелёный.
+        // Мгновенное закрытие — это замена другим уведомлением, закрытие по таймеру (~5 с) прочтением не считается.
+        _tray.BalloonTipClosed += (_, _) =>
+        {
+            double sec = (DateTime.Now - _balloonShownAt).TotalSeconds;
+            if (_balloonIncident && sec >= 1.0 && sec < 4.0) AckAll();
+        };
         SyncJournalUi();
 
         _timer.Tick += async (_, _) => await Refresh();
@@ -508,6 +516,7 @@ public partial class App : Application
     void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false)
     {
         _balloonIncident = incident;
+        _balloonShownAt = DateTime.Now;
         _tray.ShowBalloonTip(5000, "Remnawave", text, icon);
     }
 }
