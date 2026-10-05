@@ -42,6 +42,13 @@ public partial class MainWindow : Window
     public void SetStatus(string text) => StatusText.Text = text;
 
     public Action? InstallUpdateRequested;
+    public Action? OpenJournalRequested;
+
+    public void SetJournalBadge(int unread, int active)
+    {
+        JournalBtn.Content = unread > 0 ? $"журнал ({unread})" : active > 0 ? $"журнал · активно {active}" : "журнал";
+    }
+    void Journal_Click(object sender, RoutedEventArgs e) => OpenJournalRequested?.Invoke();
 
     public void SetAppUpdate(string? text)
     {

@@ -64,6 +64,7 @@ public class Settings
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Token { get; set; }
 
+    public static string DataDir => Dir;
     static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RemnawaveMonitor");
     static string FilePath => Path.Combine(Dir, "settings.json");
     public static string CachePath => Path.Combine(Dir, "cache.json");

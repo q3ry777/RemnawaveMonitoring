@@ -19,9 +19,12 @@ public partial class App : Application
     readonly Api _api = new();
     readonly DispatcherTimer _timer = new();
     readonly DispatcherTimer _svcTimer = new();
-    readonly Icon _ok = MakeIcon(Color.FromArgb(255, 176, 32));
+    readonly Icon _ok = MakeIcon(Color.FromArgb(74, 222, 128));
     readonly Icon _bad = MakeIcon(Color.FromArgb(251, 73, 52));
     readonly HashSet<string> _alerted = new();
+    readonly IncidentLog _log = IncidentLog.Load();
+    IncidentsWindow? _journal;
+    bool _balloonIncident;
     readonly DispatcherTimer _ruTimer = new();
     readonly DispatcherTimer _relTimer = new();
     readonly Dictionary<string, (string text, string level)> _ru = new();
@@ -93,13 +96,19 @@ public partial class App : Application
         ApplyTheme(_s.Theme);
         _win = new MainWindow(_s, OpenSettings, () => { _ = Refresh(true); _ = RefreshServices(); });
         _win.InstallUpdateRequested = () => _ = InstallUpdate();
+        _win.OpenJournalRequested = OpenJournal;
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть", null, (_, _) => ShowWin());
+        menu.Items.Add("Журнал событий", null, (_, _) => OpenJournal());
+        menu.Items.Add("Отметить прочитанным", null, (_, _) => AckAll());
         menu.Items.Add("Настройки", null, (_, _) => OpenSettings());
         menu.Items.Add("Выход", null, (_, _) => { _tray.Visible = false; Shutdown(); });
         _tray = new Forms.NotifyIcon { Icon = _ok, Visible = true, Text = "Remnawave", ContextMenuStrip = menu };
         _tray.DoubleClick += (_, _) => ShowWin();
+        // клик по уведомлению о проблеме открывает журнал и сбрасывает красную иконку
+        _tray.BalloonTipClicked += (_, _) => { if (_balloonIncident) { OpenJournal(); AckAll(); } else ShowWin(); };
+        SyncJournalUi();
 
         _timer.Tick += async (_, _) => await Refresh();
         _timer.Interval = TimeSpan.FromSeconds(_s.IntervalSec);
@@ -168,6 +177,7 @@ public partial class App : Application
             bool firstSnap = _prev == null;
             Directory.CreateDirectory(Path.GetDirectoryName(Settings.CachePath)!);
             File.WriteAllText(Settings.CachePath, JsonSerializer.Serialize(new[] { u, n, m, b }));
+            Track("panel|offline", "Панель", false, false, "", "Связь с панелью восстановлена");
             Notify(snap);
             UpdateTray(snap);
             NotifyUsers(snap, seed: _prev == null);
@@ -181,7 +191,8 @@ public partial class App : Application
         {
             _win.SetStatus("нет связи");
             _tray.Text = "Remnawave: нет связи с панелью";
-            _tray.Icon = _bad;
+            Track("panel|offline", "Панель", true, false, $"Нет связи с панелью: {ex.Message}", "Связь с панелью восстановлена");
+            SyncJournalUi();
             _win.SetOffline(ex.Message);
         }
         finally { _busy = false; _win.SetBusy(false); }
@@ -214,6 +225,7 @@ public partial class App : Application
             var urls = ParseUrls(_s.ServicesText);
             var rows = (await Task.WhenAll(urls.Select(ServiceMonitor.CheckAsync))).ToList();
             NotifyServices(rows, seed: !_svcSeeded);
+            SyncJournalUi();
             _svcSeeded = true;
             _svcOk = rows.Count(r => r.Level != "bad");
             _svcTotal = rows.Count;
@@ -234,8 +246,8 @@ public partial class App : Application
     {
         foreach (var r in rows)
         {
-            Track(r.Url + "|down", r.Level == "bad", seed, $"Сайт {r.Name} недоступен: {r.StatusText}", $"Сайт {r.Name} снова доступен");
-            Track(r.Url + "|cert", r.CertLevel is "warn" or "crit", false, $"{r.Name}: сертификат — {r.Cert}", $"{r.Name}: сертификат обновлён");
+            Track(r.Url + "|down", r.Name, r.Level == "bad", seed, $"Сайт {r.Name} недоступен: {r.StatusText}", $"Сайт {r.Name} снова доступен");
+            Track(r.Url + "|cert", r.Name, r.CertLevel is "warn" or "crit", false, $"{r.Name}: сертификат — {r.Cert}", $"{r.Name}: сертификат обновлён");
         }
     }
 
@@ -313,7 +325,7 @@ public partial class App : Application
                     {
                         string level = v.ok == v.total ? "ok" : v.ok == 0 ? "bad" : "warn";
                         _ru[n.Name] = ($"из РФ {v.ok}/{v.total}" + (v.ok > 0 ? $" · {v.avgMs} мс" : ""), level);
-                        Track(n.Name + "|ru", level == "bad", false,
+                        Track(n.Name + "|ru", n.Name, level == "bad", false,
                             $"Нода {n.Name} недоступна из России (0 из {v.total} точек) — возможна блокировка",
                             $"Нода {n.Name} снова доступна из России");
                     }
@@ -321,6 +333,7 @@ public partial class App : Application
                 catch { }
                 await Task.Delay(2000);
             }
+            SyncJournalUi();
             if (_prev != null)
             {
                 _prev = ApplyExtras(_prev);
@@ -390,30 +403,77 @@ public partial class App : Application
         bool anyReachable = s.Nodes.Any(x => x.PingLevel is "ok" or "warn");
         foreach (var n in s.Nodes)
         {
-            Track(n.Name + "|conn", !n.Connected, seed, $"Нода {n.Name} не в сети", $"Нода {n.Name} снова в сети");
+            Track(n.Name + "|conn", n.Name, !n.Connected, seed, $"Нода {n.Name} не в сети", $"Нода {n.Name} снова в сети");
             if (n.Connected)
-                Track(n.Name + "|xray", !n.XrayOk, seed, $"Xray остановлен на {n.Name}", $"Xray на {n.Name} снова работает");
-            Track(n.Name + "|reach", n.Connected && n.PingLevel == "bad" && anyReachable, seed,
+                Track(n.Name + "|xray", n.Name, !n.XrayOk, seed, $"Xray остановлен на {n.Name}", $"Xray на {n.Name} снова работает");
+            Track(n.Name + "|reach", n.Name, n.Connected && n.PingLevel == "bad" && anyReachable, seed,
                 $"Нода {n.Name} недоступна с вашего ПК (панель считает её рабочей)", $"Нода {n.Name} снова доступна с вашего ПК");
-            Track(n.Name + "|bill", n.BillingLevel == "crit", false, $"{n.Name}: {n.BillingText}", "");
+            Track(n.Name + "|bill", n.Name, n.BillingLevel == "crit", false, $"{n.Name}: {n.BillingText}", "");
         }
-        _tray.Icon = _strikes.Values.Any(v => v >= 2) ? _bad : _ok;
+        SyncJournalUi();
     }
 
-    void Track(string key, bool failing, bool seed, string alarm, string recovered)
+    void Track(string key, string subject, bool failing, bool seed, string alarm, string recovered)
     {
         int cur = _strikes.GetValueOrDefault(key);
+        string severity = key.EndsWith("|cert") || key.EndsWith("|bill") ? "warn" : "bad";
         if (failing)
         {
-            int next = seed ? 99 : cur + 1;
+            int next;
+            if (seed)
+            {
+                next = 99;   // проблема уже была при запуске: в журнале есть, но красной иконкой не тревожит
+                if (cur == 0) _log.Open(key, subject, alarm, severity, unread: false);
+            }
+            else
+            {
+                next = cur + 1;
+                if (next == 2)
+                {
+                    _log.Open(key, subject, alarm, severity, unread: true);
+                    Balloon(alarm, Forms.ToolTipIcon.Warning, incident: true);
+                }
+            }
             _strikes[key] = next;
-            if (next == 2) Balloon(alarm);
         }
         else
         {
-            if (cur >= 2 && recovered != "") Balloon(recovered, Forms.ToolTipIcon.Info);
+            if (cur >= 2)
+            {
+                _log.Resolve(key);
+                if (recovered != "") Balloon(recovered, Forms.ToolTipIcon.Info);
+            }
             _strikes.Remove(key);
         }
+    }
+
+    // ---- журнал событий и цвет иконки ----
+    // красная иконка — есть непрочитанные проблемы; зелёная — всё прочитано (или проблем нет)
+    void UpdateIcon() => _tray.Icon = _log.Unread > 0 ? _bad : _ok;
+
+    void SyncJournalUi()
+    {
+        UpdateIcon();
+        _win?.SetJournalBadge(_log.Unread, _log.Active);
+        _journal?.Refresh();
+    }
+
+    void AckAll()
+    {
+        _log.MarkAllRead();
+        SyncJournalUi();
+    }
+
+    void OpenJournal()
+    {
+        if (_journal == null)
+        {
+            _journal = new IncidentsWindow(_log, AckAll);
+            _journal.Closed += (_, _) => { _journal = null; AckAll(); };   // закрыл журнал — значит, посмотрел
+        }
+        _journal.Show();
+        _journal.WindowState = WindowState.Normal;
+        _journal.Activate();
     }
 
     void UpdateTray(Snapshot s)
@@ -445,5 +505,9 @@ public partial class App : Application
         foreach (var k in now.Keys) _alerted.Add(k);
     }
 
-    void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning) => _tray.ShowBalloonTip(5000, "Remnawave", text, icon);
+    void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false)
+    {
+        _balloonIncident = incident;
+        _tray.ShowBalloonTip(5000, "Remnawave", text, icon);
+    }
 }

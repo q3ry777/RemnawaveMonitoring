@@ -18,6 +18,7 @@
             <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="28,20">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="JournalBtn" Content="журнал" Style="{StaticResource Btn}" Click="Journal_Click"/>
                         <Button Content="◐ тема" Style="{StaticResource Btn}" Click="Theme_Click"/>
                         <Button Content="настройки" Style="{StaticResource Btn}" Click="Settings_Click"/>
                         <Button x:Name="RefreshBtn" Content="обновить" Style="{StaticResource BtnPrimary}" Click="Refresh_Click"/>
