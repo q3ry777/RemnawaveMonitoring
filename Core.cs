@@ -47,6 +47,7 @@ public class Settings
     public string ServicesText { get; set; } =
         "https://www.broken-tech.ru\nhttps://status.broken-tech.ru\nhttps://chat.broken-tech.ru\nhttps://bforum.broken-tech.ru\nhttps://mail.broken-tech.ru\nhttps://admin.broken-tech.ru";
 
+    public DateTime? MonitorSince { get; set; }
     public bool TgEnabled { get; set; }
     [JsonIgnore] public string TgToken { get; set; } = "";
     public string? TgTokenEnc { get; set; }

@@ -40,6 +40,7 @@ public partial class App : Application
     Snapshot? _prev;
     bool _busy, _svcBusy, _svcSeeded;
     int _svcOk, _svcTotal;
+    List<ServiceRow> _svcRows = new();
     Mutex? _mutex;
     EventWaitHandle? _showEvt;
 
@@ -103,8 +104,8 @@ public partial class App : Application
         _win.OpenJournalRequested = OpenJournal;
 
         _tg.Configure(_s);
-        _tg.StatusProvider = BuildStatus;
-        _tg.ProblemsProvider = BuildProblems;
+        _tg.Handler = HandleTg;
+        if (_s.MonitorSince == null) { _s.MonitorSince = DateTime.Now; _s.Save(); }
         _tgTimer.Tick += async (_, _) => await _tg.TickAsync();
         _tgTimer.Interval = TimeSpan.FromSeconds(5);
         _tgTimer.Start();
@@ -246,6 +247,7 @@ public partial class App : Application
             NotifyServices(rows, seed: !_svcSeeded);
             SyncJournalUi();
             _svcSeeded = true;
+            _svcRows = rows;
             _svcOk = rows.Count(r => r.Level != "bad");
             _svcTotal = rows.Count;
             _win.UpdateServices(rows);
@@ -467,6 +469,195 @@ public partial class App : Application
             }
             _strikes.Remove(key);
         }
+    }
+
+    // ---- Telegram: ответы на команды (только чтение) ----
+    const string NoData = "Данных пока нет: программа ещё не получила ответ панели.";
+
+    static string Flag(string cc) =>
+        cc.Length == 2 && cc.All(char.IsLetter)
+            ? string.Concat(cc.ToUpperInvariant().Select(c => char.ConvertFromUtf32(0x1F1E6 + (c - 'A')))) + " "
+            : "";
+
+    string? HandleTg(string cmd, string arg) => cmd switch
+    {
+        "/status" => BuildStatus(),
+        "/problems" => BuildProblems(),
+        "/nodes" => BuildNodes(),
+        "/users" => BuildUsers(),
+        "/top" => BuildTop(),
+        "/expiring" => BuildExpiring(),
+        "/services" => BuildServices(),
+        "/user" => BuildUser(arg),
+        "/billing" => BuildBilling(),
+        "/version" => BuildVersion(),
+        "/uptime" => BuildUptime(),
+        _ => null,
+    };
+
+    string BuildNodes()
+    {
+        var s = _prev;
+        if (s == null) return NoData;
+        var sb = new StringBuilder();
+        sb.AppendLine($"🖥 Ноды ({s.Nodes.Count})");
+        foreach (var n in s.Nodes)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {Flag(n.Country)}{n.Name} · онлайн {n.UsersOnline}");
+            var l2 = new[] { n.MemPctText != "" ? $"RAM {n.MemPctText} ({n.MemText})" : "", n.Cpu != "—" ? n.Cpu : "", n.Load }.Where(x => x != "");
+            var l3 = new[] { n.Down, n.Up, n.Xray }.Where(x => x != "");
+            var l5 = new[] { n.PingText, n.RuText }.Where(x => x != "");
+            foreach (var line in new[] { string.Join(" · ", l2), string.Join(" · ", l3),
+                         n.TrafficText != "—" ? "трафик " + n.TrafficText : "", string.Join(" · ", l5), n.BillingText })
+                if (line != "") sb.AppendLine("   " + line);
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    string BuildUsers()
+    {
+        var s = _prev;
+        if (s == null) return NoData;
+        var online = s.Users.Where(u => u.IsOnline).ToList();
+        if (online.Count == 0) return $"👥 Сейчас никого онлайн (всего пользователей: {s.Users.Count})";
+        var sb = new StringBuilder();
+        sb.AppendLine($"👥 Онлайн: {online.Count} из {s.Users.Count}");
+        foreach (var u in online) sb.AppendLine($"• {u.Username} — {Flag(u.LastNodeCountry)}{u.LastNode}");
+        return sb.ToString().TrimEnd();
+    }
+
+    string BuildTop()
+    {
+        var s = _prev;
+        if (s == null) return NoData;
+        var sb = new StringBuilder();
+        sb.AppendLine("📈 Топ-10 по трафику");
+        int i = 1;
+        foreach (var u in s.Users.OrderByDescending(x => x.TrafficBytes).Take(10))
+            sb.AppendLine($"{i++}. {u.Username} — {J.Bytes(u.TrafficBytes)} ({Flag(u.LastNodeCountry)}{u.LastNode})");
+        return sb.ToString().TrimEnd();
+    }
+
+    string BuildExpiring()
+    {
+        var s = _prev;
+        if (s == null) return NoData;
+        var list = s.Users.Where(u => u.ExpireLevel != "" || u.TrafficLevel != "ok")
+            .OrderByDescending(u => u.ExpireLevel == "crit" || u.TrafficLevel == "crit" ? 2 : 1).ThenBy(u => u.Username).ToList();
+        if (list.Count == 0) return "✅ Никто не упирается в лимит, подписки не истекают в ближайшие 7 дней";
+        var sb = new StringBuilder();
+        sb.AppendLine("⏳ Истекает или упирается в лимит");
+        foreach (var u in list)
+        {
+            var parts = new List<string>();
+            if (u.ExpireLevel != "") parts.Add($"подписка {u.ExpireNote}");
+            if (u.TrafficLevel != "ok") parts.Add($"трафик {u.TrafficPct:P0} лимита");
+            sb.AppendLine($"{(u.ExpireLevel == "crit" || u.TrafficLevel == "crit" ? "🔴" : "🟡")} {u.Username}: {string.Join(", ", parts)}");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    string BuildServices()
+    {
+        if (_svcRows.Count == 0) return "Список сайтов пуст или проверка ещё не выполнялась.";
+        var sb = new StringBuilder();
+        sb.AppendLine($"🌐 Сайты: {_svcRows.Count(r => r.Level != "bad")}/{_svcRows.Count} отвечают");
+        foreach (var r in _svcRows)
+            sb.AppendLine($"{(r.Level == "ok" ? "✅" : r.Level == "warn" ? "🟡" : "🔴")} {r.Name} · {r.StatusText}"
+                          + (r.Time != "—" ? $" · {r.Time}" : "") + (r.Cert != "" ? $" · {r.Cert}" : ""));
+        return sb.ToString().TrimEnd();
+    }
+
+    string BuildUser(string q)
+    {
+        var s = _prev;
+        if (s == null) return NoData;
+        q = q.Trim();
+        var exact = s.Users.FirstOrDefault(u => u.Username.Equals(q, StringComparison.OrdinalIgnoreCase));
+        var found = exact != null ? new List<UserRow> { exact }
+            : s.Users.Where(u => u.Username.Contains(q, StringComparison.OrdinalIgnoreCase)).Take(9).ToList();
+        if (found.Count == 0) return $"Пользователь «{q}» не найден";
+        if (found.Count > 1)
+        {
+            var sb2 = new StringBuilder();
+            sb2.AppendLine("Найдено несколько, уточните имя:");
+            foreach (var f in found) sb2.AppendLine("• " + f.Username);
+            return sb2.ToString().TrimEnd();
+        }
+        var u = found[0];
+        var sb = new StringBuilder();
+        sb.AppendLine($"👤 {u.Username}");
+        sb.AppendLine($"Статус: {u.Status} · " + (u.IsOnline ? "онлайн сейчас" : u.Online == "—" ? "активности не было" : $"был онлайн {u.Online}"));
+        sb.AppendLine("Трафик: " + u.Traffic + (u.HasLimit ? $" ({u.TrafficPct:P0})" : ""));
+        if (u.ExpireNote != "") sb.AppendLine("Подписка: " + u.ExpireNote);
+        sb.Append($"Последняя нода: {Flag(u.LastNodeCountry)}{u.LastNode}");
+        return sb.ToString();
+    }
+
+    string BuildBilling()
+    {
+        var s = _prev;
+        if (s == null) return NoData;
+        var rows = s.Nodes.Where(n => n.BillingText != "")
+            .OrderBy(n => n.BillingLevel == "crit" ? 0 : n.BillingLevel == "warn" ? 1 : 2).ToList();
+        if (rows.Count == 0) return "💳 Дат оплаты нет: биллинг в панели не заполнен.";
+        var sb = new StringBuilder();
+        sb.AppendLine("💳 Оплата серверов");
+        foreach (var n in rows)
+            sb.AppendLine($"{(n.BillingLevel == "crit" ? "🔴" : n.BillingLevel == "warn" ? "🟡" : "🟢")} {n.Name}: {n.BillingText}");
+        return sb.ToString().TrimEnd();
+    }
+
+    string BuildVersion()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("ℹ️ Версии");
+        sb.AppendLine($"Панель: {_panelVersion ?? "неизвестна"}"
+            + (ReleaseCheck.Newer(_latestBackend, _panelVersion) ? $" → доступна {_latestBackend}" : _latestBackend != null ? " (актуальна)" : ""));
+        if (_prev != null)
+            foreach (var n in _prev.Nodes.Where(x => x.VersionText != "")) sb.AppendLine($"• {n.Name}: {n.VersionText}");
+        sb.Append($"Программа: {Updater.CurrentText}" + (_appUpdate != null ? $" → доступна {_appUpdate.Version}" : ""));
+        return sb.ToString();
+    }
+
+    // Аптайм считается по журналу событий: падения короче ~1 минуты не фиксируются, время, когда программа была закрыта, не учитывается
+    string BuildUptime()
+    {
+        var now = DateTime.Now;
+        var since = _s.MonitorSince ?? now;
+
+        string Line(string name, string[] suffixes)
+        {
+            var parts = new List<string>();
+            foreach (var days in new[] { 7, 30 })
+            {
+                var from = now.AddDays(-days);
+                if (from < since) from = since;
+                var span = now - from;
+                if (span < TimeSpan.FromHours(1)) { parts.Add($"{days} дн: мало данных"); continue; }
+                var (down, _) = _log.Downtime(name, suffixes, from);
+                double pct = Math.Max(0, 100 - down.TotalSeconds / span.TotalSeconds * 100);
+                parts.Add($"{days} дн: {pct:0.##}%");
+            }
+            var from30 = now.AddDays(-30) < since ? since : now.AddDays(-30);
+            var (_, falls) = _log.Downtime(name, suffixes, from30);
+            return $"{name} — {string.Join(" · ", parts)}" + (falls > 0 ? $" · падений: {falls}" : "");
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"🕒 Аптайм (мониторинг с {since:dd.MM.yyyy})");
+        if (_prev != null)
+        {
+            sb.AppendLine("Ноды");
+            foreach (var n in _prev.Nodes) sb.AppendLine("• " + Line(n.Name, new[] { "|conn", "|xray" }));
+        }
+        if (_svcRows.Count > 0)
+        {
+            sb.AppendLine("Сайты");
+            foreach (var r in _svcRows) sb.AppendLine("• " + Line(r.Name, new[] { "|down" }));
+        }
+        return sb.ToString().TrimEnd();
     }
 
     // ---- Telegram ----

@@ -1,23 +1,64 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace RemnawaveMonitor;
 
-// Уведомления в Telegram и команды /status, /problems. Работает, пока запущена программа.
+// Уведомления в Telegram, команды только на чтение и постоянное меню с кнопками. Работает, пока запущена программа.
 public class TelegramService
 {
     HttpClient _http = CreateClient("");
-    string _token = "", _chat = "";
-    bool _enabled, _primed, _busy;
+    string _token = "", _chat = "", _sig = "";
+    bool _enabled, _primed, _busy, _commandsRegistered, _awaitUser;
     long _offset;
     readonly Queue<(string text, DateTime at)> _queue = new();
 
-    public Func<string>? StatusProvider;
-    public Func<string>? ProblemsProvider;
+    // (команда, аргумент) -> ответ; null — команда неизвестна
+    public Func<string, string, string?>? Handler;
+
+    static readonly (string cmd, string desc)[] Commands =
+    {
+        ("status", "сводка"), ("nodes", "подробности по нодам"), ("users", "кто сейчас онлайн"),
+        ("problems", "активные проблемы"), ("services", "сайты и сертификаты"), ("expiring", "что скоро истекает"),
+        ("top", "топ-10 по трафику"), ("user", "карточка пользователя"), ("billing", "оплата серверов"),
+        ("uptime", "аптайм за 7 и 30 дней"), ("version", "версии панели, нод и программы"), ("help", "список команд"),
+    };
+
+    static readonly (string text, string cmd)[] Buttons =
+    {
+        ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
+        ("⚠️ Проблемы", "/problems"), ("🌐 Сайты", "/services"), ("⏳ Истекает", "/expiring"),
+        ("📈 Топ", "/top"), ("💳 Оплата", "/billing"), ("🕒 Аптайм", "/uptime"),
+        ("👤 Пользователь", "/user"), ("ℹ️ Версии", "/version"),
+    };
+
+    static string Norm(string s) => s.Replace("\uFE0F", "").Trim();
+
+    // клавиатура прикладывается к каждому сообщению: меню всегда на месте
+    static readonly string KeyboardJson = JsonSerializer.Serialize(new
+    {
+        keyboard = new[]
+        {
+            new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" },
+            new[] { "⚠️ Проблемы", "🌐 Сайты", "⏳ Истекает" },
+            new[] { "📈 Топ", "💳 Оплата", "🕒 Аптайм" },
+            new[] { "👤 Пользователь", "ℹ️ Версии" },
+        },
+        is_persistent = true,
+        resize_keyboard = true,
+        input_field_placeholder = "Выберите команду…",
+    });
+
+    const string Help =
+        "Команды (или кнопки внизу):\n" +
+        "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн\n/problems — активные проблемы\n" +
+        "/services — сайты и сертификаты\n/expiring — что скоро истекает\n/top — топ-10 по трафику\n" +
+        "/user имя — карточка пользователя\n/billing — оплата серверов\n/uptime — аптайм за 7 и 30 дней\n/version — версии";
 
     public static HttpClient CreateClient(string proxy)
     {
@@ -37,11 +78,20 @@ public class TelegramService
         _enabled = s.TgEnabled && _token != "" && _chat != "";
         _http = CreateClient(s.TgProxy);
         _primed = false;
+        _commandsRegistered = false;
+
+        // после смены бота/чата/включения присылаем приветствие — вместе с ним появляется меню с кнопками
+        var sig = $"{_enabled}|{_token}|{_chat}";
+        bool changed = _sig != "" && sig != _sig && _enabled;
+        _sig = sig;
+        if (changed) Enqueue("✅ Remnawave Monitor подключён. Меню с кнопками — внизу.");
     }
 
     public void Enqueue(string text)
     {
-        if (_enabled) _queue.Enqueue((text, DateTime.Now));
+        if (!_enabled) return;
+        if (text.Length > 3900) text = text[..3900] + "\n…";
+        _queue.Enqueue((text, DateTime.Now));
     }
 
     // Вызывается таймером раз в несколько секунд: читает команды и отправляет очередь
@@ -51,11 +101,20 @@ public class TelegramService
         _busy = true;
         try
         {
+            if (!_commandsRegistered) await RegisterCommandsAsync();
             await PollAsync();
             await FlushAsync();
         }
         catch { /* нет сети — повторим на следующем тике */ }
         finally { _busy = false; }
+    }
+
+    async Task RegisterCommandsAsync()
+    {
+        var json = JsonSerializer.Serialize(new { commands = Commands.Select(c => new { command = c.cmd, description = c.desc }) });
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var res = await _http.PostAsync($"https://api.telegram.org/bot{_token}/setMyCommands", content);
+        if (res.IsSuccessStatusCode) _commandsRegistered = true;
     }
 
     async Task FlushAsync()
@@ -69,9 +128,12 @@ public class TelegramService
         }
     }
 
+    static FormUrlEncodedContent Form(string chat, string text) =>
+        new(new Dictionary<string, string> { ["chat_id"] = chat, ["text"] = text, ["reply_markup"] = KeyboardJson });
+
     static async Task<bool> SendAsync(HttpClient http, string token, string chat, string text)
     {
-        using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["chat_id"] = chat, ["text"] = text });
+        using var content = Form(chat, text);
         using var res = await http.PostAsync($"https://api.telegram.org/bot{token}/sendMessage", content);
         int code = (int)res.StatusCode;
         return code < 500 && code != 429;   // ошибки настройки (4xx) не повторяем бесконечно
@@ -93,15 +155,32 @@ public class TelegramService
             if (!u.TryGetProperty("message", out var m) || !m.TryGetProperty("chat", out var chat)) continue;
             if (chat.GetProperty("id").GetInt64().ToString() != _chat) continue;   // чужим не отвечаем
 
-            var text = J.S(m, "text");
-            var cmd = text.Split(' ')[0].Split('@')[0].ToLowerInvariant();
-            string? reply = cmd switch
+            var raw = J.S(m, "text").Trim();
+            if (raw == "") continue;
+
+            string cmd, arg = "";
+            if (raw.StartsWith('/'))
             {
-                "/status" => StatusProvider?.Invoke(),
-                "/problems" => ProblemsProvider?.Invoke(),
-                "/start" or "/help" => "Команды:\n/status — сводка\n/problems — активные проблемы",
-                _ => null,
-            };
+                var parts = raw.Split(new[] { ' ', '\n' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                cmd = parts[0].Split('@')[0].ToLowerInvariant();
+                if (parts.Length > 1) arg = parts[1].Trim();
+            }
+            else
+            {
+                var btn = Buttons.FirstOrDefault(b => Norm(b.text) == Norm(raw));
+                if (btn.cmd != null) cmd = btn.cmd;
+                else if (_awaitUser) { cmd = "/user"; arg = raw; }
+                else continue;
+            }
+
+            string? reply;
+            if (cmd is "/start" or "/help") { _awaitUser = false; reply = Help; }
+            else if (cmd == "/user" && arg == "") { _awaitUser = true; reply = "👤 Введите имя пользователя (или его часть)"; }
+            else
+            {
+                _awaitUser = false;
+                reply = Handler?.Invoke(cmd, arg) ?? (raw.StartsWith('/') ? "Не знаю такой команды.\n\n" + Help : null);
+            }
             if (reply != null) Enqueue(reply);
         }
         _primed = true;
@@ -125,7 +204,7 @@ public class TelegramService
         try
         {
             using var http = CreateClient(s.TgProxy);
-            using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["chat_id"] = s.TgChatId, ["text"] = text });
+            using var content = Form(s.TgChatId, text);
             using var res = await http.PostAsync($"https://api.telegram.org/bot{s.TgToken}/sendMessage", content);
             return res.IsSuccessStatusCode ? null : Describe(await res.Content.ReadAsStringAsync(), res.StatusCode);
         }

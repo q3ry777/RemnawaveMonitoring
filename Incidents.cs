@@ -70,6 +70,22 @@ public class IncidentLog
         return downtime;
     }
 
+    // Суммарный простой объекта (по ключам вида "имя|conn") с момента from и число падений
+    public (TimeSpan down, int count) Downtime(string subject, string[] keySuffixes, DateTime from)
+    {
+        var now = DateTime.Now;
+        var sum = TimeSpan.Zero;
+        int n = 0;
+        foreach (var x in _items.Where(y => y.Subject == subject && keySuffixes.Any(k => y.Key.EndsWith(k))))
+        {
+            var end = x.End ?? now;
+            if (end <= from) continue;
+            sum += end - (x.Start < from ? from : x.Start);
+            n++;
+        }
+        return (sum, n);
+    }
+
     public void MarkAllRead()
     {
         foreach (var x in _items) x.Unread = false;
