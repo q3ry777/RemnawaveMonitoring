@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,6 +24,8 @@ public partial class App : Application
     readonly Icon _bad = MakeIcon(Color.FromArgb(251, 73, 52));
     readonly HashSet<string> _alerted = new();
     readonly IncidentLog _log = IncidentLog.Load();
+    readonly TelegramService _tg = new();
+    readonly DispatcherTimer _tgTimer = new();
     IncidentsWindow? _journal;
     bool _balloonIncident;
     DateTime _balloonShownAt = DateTime.MinValue;
@@ -99,6 +102,13 @@ public partial class App : Application
         _win.InstallUpdateRequested = () => _ = InstallUpdate();
         _win.OpenJournalRequested = OpenJournal;
 
+        _tg.Configure(_s);
+        _tg.StatusProvider = BuildStatus;
+        _tg.ProblemsProvider = BuildProblems;
+        _tgTimer.Tick += async (_, _) => await _tg.TickAsync();
+        _tgTimer.Interval = TimeSpan.FromSeconds(5);
+        _tgTimer.Start();
+
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть", null, (_, _) => ShowWin());
         menu.Items.Add("Журнал событий", null, (_, _) => OpenJournal());
@@ -165,6 +175,7 @@ public partial class App : Application
         var w = new SettingsWindow(_s);
         if (w.ShowDialog() != true) return;
         _s.Save();
+        _tg.Configure(_s);
         _timer.Interval = TimeSpan.FromSeconds(_s.IntervalSec);
         _ = Refresh(true);
         _ = RefreshServices();
@@ -272,7 +283,8 @@ public partial class App : Application
             if (_appUpdate != null && _appNotified != _appUpdate.Version)
             {
                 _appNotified = _appUpdate.Version;
-                Balloon($"Доступна новая версия программы: {_appUpdate.Version}. Нажмите «обновить» в шапке окна.", Forms.ToolTipIcon.Info);
+                Balloon($"Доступна новая версия программы: {_appUpdate.Version}. Нажмите «обновить» в шапке окна.", Forms.ToolTipIcon.Info,
+                    tgKind: "updates", tgText: $"⬆️ Доступна новая версия Remnawave Monitor: {_appUpdate.Version}");
             }
         }
         catch { /* нет сети или не настроен доступ — молча пробуем позже */ }
@@ -370,9 +382,9 @@ public partial class App : Application
             if (_verSeeded)
             {
                 if (back != null && back != _latestBackend && ReleaseCheck.Newer(back, _panelVersion))
-                    Balloon($"Вышла новая версия Remnawave: {back} (у вас {_panelVersion})", Forms.ToolTipIcon.Info);
+                    Balloon($"Вышла новая версия Remnawave: {back} (у вас {_panelVersion})", Forms.ToolTipIcon.Info, tgKind: "updates");
                 if (node != null && node != _latestNode && (_prev?.Nodes.Any(x => ReleaseCheck.Newer(node, x.NodeVersion)) ?? false))
-                    Balloon($"Вышла новая версия ноды Remnawave: {node}", Forms.ToolTipIcon.Info);
+                    Balloon($"Вышла новая версия ноды Remnawave: {node}", Forms.ToolTipIcon.Info, tgKind: "updates");
             }
             _verSeeded = true;
             if (node != null) _latestNode = node;
@@ -439,7 +451,7 @@ public partial class App : Application
                 if (next == 2)
                 {
                     _log.Open(key, subject, alarm, severity, unread: true);
-                    Balloon(alarm, Forms.ToolTipIcon.Warning, incident: true);
+                    Balloon(alarm, Forms.ToolTipIcon.Warning, incident: true, tgKind: TgKind(key), tgText: "🔴 " + alarm);
                 }
             }
             _strikes[key] = next;
@@ -448,11 +460,49 @@ public partial class App : Application
         {
             if (cur >= 2)
             {
-                _log.Resolve(key);
-                if (recovered != "") Balloon(recovered, Forms.ToolTipIcon.Info);
+                var downtime = _log.Resolve(key);
+                if (recovered != "")
+                    Balloon(recovered, Forms.ToolTipIcon.Info, tgKind: TgKind(key),
+                        tgText: "🟢 " + recovered + (downtime is TimeSpan d ? $" (простой {IncidentLog.Dur(d)})" : ""));
             }
             _strikes.Remove(key);
         }
+    }
+
+    // ---- Telegram ----
+    static string TgKind(string key) =>
+        key.EndsWith("|down") || key.EndsWith("|cert") ? "services" : key.EndsWith("|bill") ? "billing" : "nodes";
+
+    void Tg(string kind, string text)
+    {
+        bool allowed = kind switch
+        {
+            "nodes" => _s.TgNodes, "services" => _s.TgServices, "limits" => _s.TgLimits,
+            "billing" => _s.TgBilling, "updates" => _s.TgUpdates, _ => true,
+        };
+        if (_s.TgEnabled && allowed) _tg.Enqueue(text);
+    }
+
+    string BuildStatus()
+    {
+        var s = _prev;
+        if (s == null) return "Данных пока нет: программа ещё не получила ответ панели.";
+        int online = s.Users.Count(u => u.IsOnline);
+        int ok = s.Nodes.Count(n => n.Connected && n.XrayOk);
+        var sb = new StringBuilder();
+        sb.AppendLine($"📊 Онлайн: {online} · ноды {ok}/{s.Nodes.Count}" + (_svcTotal > 0 ? $" · сайты {_svcOk}/{_svcTotal}" : ""));
+        foreach (var n in s.Nodes)
+            sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {n.Name} · онлайн {n.UsersOnline}"
+                          + (n.MemPctText != "" ? $" · RAM {n.MemPctText}" : "") + (n.PingText != "" ? $" · {n.PingText}" : ""));
+        sb.Append($"Активных проблем: {_log.Active} · обновлено {s.At:HH:mm:ss}");
+        return sb.ToString();
+    }
+
+    string BuildProblems()
+    {
+        var rows = _log.Rows().Where(r => r.Active).ToList();
+        if (rows.Count == 0) return "✅ Активных проблем нет";
+        return string.Join("\n", rows.Select(r => $"{(r.Level == "warn" ? "🟡" : "🔴")} {r.Subject}: {r.Text} ({r.Status})"));
     }
 
     // ---- журнал событий и цвет иконки ----
@@ -507,14 +557,17 @@ public partial class App : Application
         {
             var fresh = now.Where(kv => !_alerted.Contains(kv.Key)).Select(kv => kv.Value).ToList();
             if (fresh.Count > 0)
-                Balloon(string.Join("\n", fresh.Take(3)) + (fresh.Count > 3 ? $"\nи ещё {fresh.Count - 3}…" : ""));
+                Balloon(string.Join("\n", fresh.Take(3)) + (fresh.Count > 3 ? $"\nи ещё {fresh.Count - 3}…" : ""),
+                    Forms.ToolTipIcon.Warning, tgKind: "limits", tgText: "⚠️ " + string.Join("\n", fresh.Take(15)));
         }
         _alerted.Clear();
         foreach (var k in now.Keys) _alerted.Add(k);
     }
 
-    void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false)
+    void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false,
+        string? tgKind = null, string? tgText = null)
     {
+        if (tgKind != null) Tg(tgKind, tgText ?? text);
         _balloonIncident = incident;
         _balloonShownAt = DateTime.Now;
         _tray.ShowBalloonTip(5000, "Remnawave", text, icon);

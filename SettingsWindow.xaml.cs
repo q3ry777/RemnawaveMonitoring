@@ -22,6 +22,15 @@ public partial class SettingsWindow : Window
         MetricsPassBox.Password = s.MetricsPass;
         UpdVerText.Text = $"ОБНОВЛЕНИЯ ПРОГРАММЫ · СЕЙЧАС ВЕРСИЯ {Updater.CurrentText}";
         UpdateRepoBox.Text = s.UpdateRepo;
+        TgBox.IsChecked = s.TgEnabled;
+        TgTokenBox.Password = s.TgToken;
+        TgChatBox.Text = s.TgChatId;
+        TgProxyBox.Text = s.TgProxy;
+        TgNodesBox.IsChecked = s.TgNodes;
+        TgServicesBox.IsChecked = s.TgServices;
+        TgLimitsBox.IsChecked = s.TgLimits;
+        TgBillingBox.IsChecked = s.TgBilling;
+        TgUpdatesBox.IsChecked = s.TgUpdates;
         UpdateTokenBox.Password = s.UpdateToken;
         ProbeBox.IsChecked = s.ProbeEnabled;
         RuBox.IsChecked = s.RuCheckEnabled;
@@ -41,6 +50,15 @@ public partial class SettingsWindow : Window
         _s.MetricsUser = MetricsUserBox.Text.Trim();
         _s.MetricsPass = MetricsPassBox.Password;
         _s.UpdateRepo = UpdateRepoBox.Text.Trim();
+        _s.TgEnabled = TgBox.IsChecked == true;
+        _s.TgToken = TgTokenBox.Password.Trim();
+        _s.TgChatId = TgChatBox.Text.Trim();
+        _s.TgProxy = TgProxyBox.Text.Trim();
+        _s.TgNodes = TgNodesBox.IsChecked == true;
+        _s.TgServices = TgServicesBox.IsChecked == true;
+        _s.TgLimits = TgLimitsBox.IsChecked == true;
+        _s.TgBilling = TgBillingBox.IsChecked == true;
+        _s.TgUpdates = TgUpdatesBox.IsChecked == true;
         _s.UpdateToken = UpdateTokenBox.Password.Trim();
         _s.ProbeEnabled = ProbeBox.IsChecked == true;
         _s.RuCheckEnabled = RuBox.IsChecked == true;
@@ -51,6 +69,37 @@ public partial class SettingsWindow : Window
         catch (Exception ex) { MessageBox.Show("Автозапуск: " + ex.Message); }
         App.ApplyTheme(_s.Theme);
         DialogResult = true;
+    }
+
+    Settings TgTemp() => new Settings
+    {
+        TgToken = TgTokenBox.Password.Trim(), TgChatId = TgChatBox.Text.Trim(), TgProxy = TgProxyBox.Text.Trim(),
+    };
+
+    async void TgBind_Click(object sender, RoutedEventArgs e)
+    {
+        var tmp = TgTemp();
+        if (tmp.TgToken == "") { MessageBox.Show("Сначала вставьте токен бота."); return; }
+        try
+        {
+            var r = await TelegramService.FindChatAsync(tmp);
+            if (r == null)
+                MessageBox.Show("Сообщений боту не найдено. Напишите ему любое сообщение в Telegram и нажмите ещё раз.");
+            else
+            {
+                TgChatBox.Text = r.Value.id;
+                MessageBox.Show($"Привязан чат: {r.Value.name} ({r.Value.id}). Нажмите «сохранить».");
+            }
+        }
+        catch (Exception ex) { MessageBox.Show("Ошибка: " + ex.Message); }
+    }
+
+    async void TgTest_Click(object sender, RoutedEventArgs e)
+    {
+        var tmp = TgTemp();
+        if (tmp.TgToken == "" || tmp.TgChatId == "") { MessageBox.Show("Нужны токен бота и ID чата."); return; }
+        var err = await TelegramService.SendOnceAsync(tmp, "✅ Remnawave Monitor: тестовое сообщение");
+        MessageBox.Show(err == null ? "Сообщение отправлено — проверьте Telegram." : "Не удалось отправить: " + err);
     }
 
     async void CheckUpdate_Click(object sender, RoutedEventArgs e)

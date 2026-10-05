@@ -47,6 +47,17 @@ public class Settings
     public string ServicesText { get; set; } =
         "https://www.broken-tech.ru\nhttps://status.broken-tech.ru\nhttps://chat.broken-tech.ru\nhttps://bforum.broken-tech.ru\nhttps://mail.broken-tech.ru\nhttps://admin.broken-tech.ru";
 
+    public bool TgEnabled { get; set; }
+    [JsonIgnore] public string TgToken { get; set; } = "";
+    public string? TgTokenEnc { get; set; }
+    public string TgChatId { get; set; } = "";
+    public string TgProxy { get; set; } = "";
+    public bool TgNodes { get; set; } = true;
+    public bool TgServices { get; set; } = true;
+    public bool TgLimits { get; set; } = true;
+    public bool TgBilling { get; set; } = true;
+    public bool TgUpdates { get; set; } = true;
+
     public string UpdateRepo { get; set; } = "";
     [JsonIgnore] public string UpdateToken { get; set; } = "";
     public string? UpdateTokenEnc { get; set; }
@@ -77,6 +88,7 @@ public class Settings
             s.ApiToken = Secret.Unprotect(s.TokenEnc);
             s.MetricsPass = Secret.Unprotect(s.MetricsPassEnc);
             s.UpdateToken = Secret.Unprotect(s.UpdateTokenEnc);
+            s.TgToken = Secret.Unprotect(s.TgTokenEnc);
             if (s.ApiToken == "" && !string.IsNullOrEmpty(s.Token))
             {
                 s.ApiToken = s.Token!;   // миграция со старой версии
@@ -94,6 +106,7 @@ public class Settings
         TokenEnc = Secret.Protect(ApiToken);
         MetricsPassEnc = Secret.Protect(MetricsPass);
         UpdateTokenEnc = Secret.Protect(UpdateToken);
+        TgTokenEnc = Secret.Protect(TgToken);
         Directory.CreateDirectory(Dir);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this));
     }

@@ -58,10 +58,16 @@ public class IncidentLog
         Save();
     }
 
-    public void Resolve(string key)
+    public TimeSpan? Resolve(string key)
     {
-        foreach (var x in _items.Where(y => y.Key == key && y.End == null)) x.End = DateTime.Now;
+        TimeSpan? downtime = null;
+        foreach (var x in _items.Where(y => y.Key == key && y.End == null))
+        {
+            x.End = DateTime.Now;
+            downtime = x.End - x.Start;
+        }
         Save();
+        return downtime;
     }
 
     public void MarkAllRead()
@@ -87,7 +93,7 @@ public class IncidentLog
         }).ToList();
     }
 
-    static string Dur(TimeSpan t) =>
+    public static string Dur(TimeSpan t) =>
         t.TotalMinutes < 1 ? "<1 мин"
         : t.TotalHours < 1 ? $"{(int)t.TotalMinutes} мин"
         : t.TotalDays < 1 ? $"{(int)t.TotalHours} ч {t.Minutes} мин"

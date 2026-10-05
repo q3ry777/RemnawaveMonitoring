@@ -52,6 +52,26 @@
             <Button Content="проверить обновления" Style="{StaticResource Btn}" Margin="0,10,0,0"
                     HorizontalAlignment="Left" Click="CheckUpdate_Click"/>
 
+            <TextBlock Text="TELEGRAM" Style="{StaticResource Hdr}" Margin="0,22,0,8"/>
+            <CheckBox x:Name="TgBox" Style="{StaticResource Check}" Content="отправлять уведомления в Telegram"/>
+            <TextBlock Text="ТОКЕН БОТА (от @BotFather; хранится зашифрованным)" Style="{StaticResource Hdr}" Margin="0,12,0,6"/>
+            <PasswordBox x:Name="TgTokenBox" Style="{StaticResource InputPwd}"/>
+            <TextBlock Text="ID ЧАТА (сначала напишите боту любое сообщение)" Style="{StaticResource Hdr}" Margin="0,12,0,6"/>
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBox x:Name="TgChatBox" Style="{StaticResource Input}"/>
+                <Button Grid.Column="1" Content="привязать чат" Style="{StaticResource Btn}" Click="TgBind_Click"/>
+            </Grid>
+            <TextBlock Text="ПРОКСИ (необязательно): http://host:port или socks5://host:port" Style="{StaticResource Hdr}" Margin="0,12,0,6"/>
+            <TextBox x:Name="TgProxyBox" Style="{StaticResource Input}"/>
+            <TextBlock Text="ЧТО ПРИСЫЛАТЬ" Style="{StaticResource Hdr}" Margin="0,14,0,4"/>
+            <CheckBox x:Name="TgNodesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="ноды и связь с панелью"/>
+            <CheckBox x:Name="TgServicesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="сайты и сертификаты"/>
+            <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="лимиты трафика и подписки пользователей"/>
+            <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="оплата серверов"/>
+            <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="новые версии (панель, ноды, программа)"/>
+            <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,12,0,0" HorizontalAlignment="Left" Click="TgTest_Click"/>
+
             <TextBlock Text="ТЕМА" Style="{StaticResource Hdr}" Margin="0,22,0,8"/>
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="DarkRb" GroupName="theme" Content="тёмная" Style="{StaticResource PillTab}"/>
