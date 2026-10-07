@@ -265,20 +265,33 @@
                                                 </Border>
                                             </Grid>
 
-                                            <!-- строка 2: RAM, CPU, нагрузка, скорость -->
+                                            <!-- строка 2: CPU, память, диск сервера и скорость -->
                                             <Grid Margin="0,10,0,0">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="140"/><ColumnDefinition Width="46"/><ColumnDefinition Width="190"/>
-                                                    <ColumnDefinition Width="80"/><ColumnDefinition Width="160"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="190"/><ColumnDefinition Width="190"/>
+                                                    <ColumnDefinition Width="190"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <ProgressBar Grid.Column="1" Style="{StaticResource MemBar}" Value="{Binding MemPct, Mode=OneWay}"
-                                                             Margin="0,0,12,0" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="{Binding MemPctText}" FontSize="12" FontWeight="Bold"/>
-                                                <TextBlock Grid.Column="3" Text="{Binding MemText}" FontSize="12" Foreground="{DynamicResource Dim}"/>
-                                                <TextBlock Grid.Column="4" Text="{Binding Cpu}" FontSize="12" Foreground="{DynamicResource Dim}"/>
-                                                <TextBlock Grid.Column="5" Text="{Binding Load}" FontSize="12" Foreground="{DynamicResource Dim}"/>
-                                                <TextBlock Grid.Column="6" Text="{Binding Down}" FontSize="12" Foreground="{DynamicResource Green}"/>
-                                                <TextBlock Grid.Column="7" Text="{Binding Up}" FontSize="12" Foreground="{DynamicResource Amber}"/>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Background="Transparent" ToolTip="{Binding CpuTip}">
+                                                    <TextBlock Text="CPU" Style="{StaticResource MeterLbl}"/>
+                                                    <ProgressBar Style="{StaticResource MeterBar}" Value="{Binding CpuVal, Mode=OneWay}" Tag="{Binding CpuLevel}"/>
+                                                    <TextBlock Text="{Binding CpuPctText}" Style="{StaticResource MeterPct}" Tag="{Binding CpuLevel}"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" Background="Transparent" ToolTip="{Binding RamTip}">
+                                                    <TextBlock Text="RAM" Style="{StaticResource MeterLbl}"/>
+                                                    <ProgressBar Style="{StaticResource MeterBar}" Value="{Binding RamVal, Mode=OneWay}" Tag="{Binding RamLevel}"/>
+                                                    <TextBlock Text="{Binding RamPctText}" Style="{StaticResource MeterPct}" Tag="{Binding RamLevel}"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="3" Orientation="Horizontal" Background="Transparent" ToolTip="{Binding DiskTip}">
+                                                    <TextBlock Text="ДИСК" Style="{StaticResource MeterLbl}"/>
+                                                    <ProgressBar Style="{StaticResource MeterBar}" Value="{Binding DiskVal, Mode=OneWay}" Tag="{Binding DiskLevel}"/>
+                                                    <TextBlock Text="{Binding DiskPctText}" Style="{StaticResource MeterPct}" Tag="{Binding DiskLevel}"/>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="4" Text="{Binding Down}" FontSize="12" Foreground="{DynamicResource Green}" VerticalAlignment="Center"/>
+                                                <DockPanel Grid.Column="5" VerticalAlignment="Center">
+                                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Up}" FontSize="12" Foreground="{DynamicResource Amber}" Margin="0,0,14,0"/>
+                                                    <TextBlock Text="{Binding SrvNote}" FontSize="12" Foreground="{DynamicResource Red}"
+                                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding SrvNote}"/>
+                                                </DockPanel>
                                             </Grid>
                                             <!-- строка 3: доступность, версии и оплата -->
                                             <Grid Margin="0,8,0,0">

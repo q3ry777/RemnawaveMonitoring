@@ -24,6 +24,9 @@ public partial class App : Application
     readonly Icon _bad = MakeIcon(Color.FromArgb(251, 73, 52));
     readonly HashSet<string> _alerted = new();
     readonly IncidentLog _log = IncidentLog.Load();
+    readonly DispatcherTimer _sshTimer = new();
+    readonly Dictionary<string, (ServerStats? stats, string error)> _srv = new();
+    bool _sshBusy;
     readonly TelegramService _tg = new();
     readonly DispatcherTimer _tgTimer = new();
     IncidentsWindow? _journal;
@@ -141,6 +144,10 @@ public partial class App : Application
         _ruTimer.Interval = TimeSpan.FromMinutes(10);
         _ruTimer.Start();
 
+        _sshTimer.Tick += async (_, _) => await RefreshSsh();
+        _sshTimer.Interval = TimeSpan.FromSeconds(60);
+        _sshTimer.Start();
+
         _relTimer.Tick += async (_, _) => { await RefreshReleases(); await CheckAppUpdateAsync(); };
         _relTimer.Interval = TimeSpan.FromHours(6);
         _relTimer.Start();
@@ -163,6 +170,7 @@ public partial class App : Application
         _ = RefreshServices();
         _ = RefreshReleases();
         _ = CheckAppUpdateAsync();
+        _ = RefreshSsh();
     }
 
     void ShowWin()
@@ -173,7 +181,8 @@ public partial class App : Application
 
     void OpenSettings()
     {
-        var w = new SettingsWindow(_s);
+        var nodes = _prev?.Nodes.Select(n => (n.Name, n.Address)).ToList() ?? new List<(string, string)>();
+        var w = new SettingsWindow(_s, nodes);
         if (w.ShowDialog() != true) return;
         _s.Save();
         _tg.Configure(_s);
@@ -181,6 +190,7 @@ public partial class App : Application
         _ = Refresh(true);
         _ = RefreshServices();
         _ = CheckAppUpdateAsync();
+        _ = RefreshSsh();
     }
 
     async Task Refresh(bool manual = false)
@@ -326,9 +336,60 @@ public partial class App : Application
             if (n.NodeVersion != "") parts.Add(old ? $"node {n.NodeVersion} → {latest}" : $"node {n.NodeVersion}");
             if (n.XrayVersion != "") parts.Add($"xray {n.XrayVersion}");
             var ru = _ru.TryGetValue(n.Name, out var r) ? r : ("", "");
-            return n with { VersionText = string.Join(" · ", parts), VersionLevel = old ? "warn" : "", RuText = ru.Item1, RuLevel = ru.Item2 };
+            ServerStats? st = null;
+            string sshErr = "";
+            if (_srv.TryGetValue(n.Name, out var sr)) { st = sr.stats; sshErr = sr.error ?? ""; }
+            return n with
+            {
+                VersionText = string.Join(" · ", parts), VersionLevel = old ? "warn" : "", RuText = ru.Item1, RuLevel = ru.Item2,
+                SrvCpu = st?.Cpu ?? -1, SrvRam = st?.Ram ?? -1, SrvDisk = st?.Disk ?? -1,
+                SrvRamText = st?.RamText ?? "", SrvDiskText = st?.DiskText ?? "",
+                SrvNote = sshErr != "" ? "ssh: " + sshErr : "",
+            };
         }).ToList();
         return s with { Nodes = nodes };
+    }
+
+    // Загрузка CPU, память и диск серверов нод по SSH (раз в минуту, все серверы параллельно)
+    async Task RefreshSsh()
+    {
+        if (_sshBusy) return;
+        var list = _s.SshServers.Where(x => x.Enabled && x.Host != "" && x.Password != "").ToList();
+        foreach (var k in _srv.Keys.Where(k => list.All(x => x.Node != k)).ToList()) _srv.Remove(k);
+        if (list.Count == 0) { ReapplyExtras(); return; }
+
+        _sshBusy = true;
+        try
+        {
+            var results = await Task.WhenAll(list.Select(async srv =>
+            {
+                try
+                {
+                    var (st, key) = await SshStats.CollectAsync(srv.Clone());
+                    return new SshResult(srv, st, key, "");
+                }
+                catch (Exception ex) { return new SshResult(srv, null, "", ex.Message); }
+            }));
+
+            bool save = false;
+            foreach (var r in results)
+            {
+                _srv[r.Srv.Node] = (r.Stats, r.Error);
+                if (r.Stats != null && r.Srv.HostKey == "" && r.Key != "") { r.Srv.HostKey = r.Key; save = true; }   // запоминаем ключ сервера
+            }
+            if (save) _s.Save();
+            ReapplyExtras();
+        }
+        finally { _sshBusy = false; }
+    }
+
+    record SshResult(SshServer Srv, ServerStats? Stats, string Key, string Error);
+
+    void ReapplyExtras()
+    {
+        if (_prev == null) return;
+        _prev = ApplyExtras(_prev);
+        _win.Update(_prev);
     }
 
     // Проверка нод из России: раз в 10 минут, по одной, чтобы не упереться в лимиты check-host.net
@@ -505,7 +566,10 @@ public partial class App : Application
         {
             sb.AppendLine();
             sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {Flag(n.Country)}{n.Name} · онлайн {n.UsersOnline}");
-            var l2 = new[] { n.MemPctText != "" ? $"RAM {n.MemPctText} ({n.MemText})" : "", n.Cpu != "—" ? n.Cpu : "", n.Load }.Where(x => x != "");
+            var l2 = (n.SrvCpu >= 0 || n.SrvRam >= 0 || n.SrvDisk >= 0
+                    ? new[] { $"CPU {n.CpuPctText}", $"RAM {n.RamPctText}", $"диск {n.DiskPctText}", n.Load }
+                    : new[] { n.MemPctText != "" ? $"RAM {n.MemPctText} ({n.MemText})" : "", n.Cpu != "—" ? n.Cpu : "", n.Load })
+                .Where(x => x != "");
             var l3 = new[] { n.Down, n.Up, n.Xray }.Where(x => x != "");
             var l5 = new[] { n.PingText, n.RuText }.Where(x => x != "");
             foreach (var line in new[] { string.Join(" · ", l2), string.Join(" · ", l3),
@@ -684,7 +748,7 @@ public partial class App : Application
         sb.AppendLine($"📊 Онлайн: {online} · ноды {ok}/{s.Nodes.Count}" + (_svcTotal > 0 ? $" · сайты {_svcOk}/{_svcTotal}" : ""));
         foreach (var n in s.Nodes)
             sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {n.Name} · онлайн {n.UsersOnline}"
-                          + (n.MemPctText != "" ? $" · RAM {n.MemPctText}" : "") + (n.PingText != "" ? $" · {n.PingText}" : ""));
+                          + (n.SrvCpu >= 0 ? $" · CPU {n.CpuPctText}" : "") + (n.RamPctText != "—" ? $" · RAM {n.RamPctText}" : "") + (n.PingText != "" ? $" · {n.PingText}" : ""));
         sb.Append($"Активных проблем: {_log.Active} · обновлено {s.At:HH:mm:ss}");
         return sb.ToString();
     }

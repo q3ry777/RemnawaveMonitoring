@@ -63,6 +63,8 @@ public class Settings
     [JsonIgnore] public string UpdateToken { get; set; } = "";
     public string? UpdateTokenEnc { get; set; }
 
+    public List<SshServer> SshServers { get; set; } = new();
+
     public string MetricsUrl { get; set; } = "";
     public string MetricsUser { get; set; } = "";
 
@@ -90,6 +92,7 @@ public class Settings
             s.MetricsPass = Secret.Unprotect(s.MetricsPassEnc);
             s.UpdateToken = Secret.Unprotect(s.UpdateTokenEnc);
             s.TgToken = Secret.Unprotect(s.TgTokenEnc);
+            foreach (var x in s.SshServers) x.Password = Secret.Unprotect(x.PasswordEnc);
             if (s.ApiToken == "" && !string.IsNullOrEmpty(s.Token))
             {
                 s.ApiToken = s.Token!;   // миграция со старой версии
@@ -108,6 +111,7 @@ public class Settings
         MetricsPassEnc = Secret.Protect(MetricsPass);
         UpdateTokenEnc = Secret.Protect(UpdateToken);
         TgTokenEnc = Secret.Protect(TgToken);
+        foreach (var x in SshServers) x.PasswordEnc = Secret.Protect(x.Password);
         Directory.CreateDirectory(Dir);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this));
     }
@@ -125,7 +129,28 @@ public record NodeRow(
     string TrafficText, bool HasLimit, double TrafficPct, string TrafficLevel,
     int UsersOnline, bool Connected, bool XrayOk, string Address,
     string PingText = "", string PingLevel = "", string BillingText = "", string BillingLevel = "",
-    string RuText = "", string RuLevel = "", string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "");
+    string RuText = "", string RuLevel = "", string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
+    double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "")
+{
+    // Нагрузка сервера: CPU и диск — только по SSH; память — по SSH, а без него — из панели
+    static string Lvl(double v, double warn, double crit) => v < 0 ? "none" : v >= crit ? "crit" : v >= warn ? "warn" : "ok";
+    static string Pct(double v) => $"{v * 100:0}%";
+
+    public double CpuVal => Math.Max(0, SrvCpu);
+    public string CpuPctText => SrvCpu >= 0 ? Pct(SrvCpu) : "—";
+    public string CpuLevel => Lvl(SrvCpu, 0.7, 0.9);
+    public string CpuTip => string.Join(" · ", new[] { Cpu != "—" ? Cpu : "", Load, SrvCpu < 0 ? "загрузка CPU — по SSH (настройки → серверы)" : "" }.Where(x => x != ""));
+
+    public double RamVal => SrvRam >= 0 ? SrvRam : MemPct;
+    public string RamPctText => SrvRam >= 0 ? Pct(SrvRam) : MemPctText != "" ? MemPctText : "—";
+    public string RamLevel => SrvRam >= 0 ? Lvl(SrvRam, 0.75, 0.9) : MemPctText != "" ? MemLevel : "none";
+    public string RamTip => SrvRam >= 0 ? SrvRamText : MemText != "—" ? MemText + " (данные панели)" : "нет данных";
+
+    public double DiskVal => Math.Max(0, SrvDisk);
+    public string DiskPctText => SrvDisk >= 0 ? Pct(SrvDisk) : "—";
+    public string DiskLevel => Lvl(SrvDisk, 0.8, 0.9);
+    public string DiskTip => SrvDisk >= 0 ? SrvDiskText : "диск — по SSH (настройки → серверы)";
+}
 public record Snapshot(List<UserRow> Users, List<NodeRow> Nodes, DateTime At);
 
 public class Api

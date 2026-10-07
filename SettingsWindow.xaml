@@ -1,90 +1,277 @@
 <Window x:Class="RemnawaveMonitor.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="настройки" Width="480" SizeToContent="Height" MaxHeight="780" ResizeMode="NoResize"
+        Title="настройки" Width="900" Height="650" MinWidth="800" MinHeight="520"
         WindowStartupLocation="CenterScreen" Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
-        FontFamily="{StaticResource Mono}" FontSize="13">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="26,22,26,22">
-            <TextBlock FontSize="15" FontWeight="Bold">
-                <Run Text="настройки"/><Run Text="_" Foreground="{DynamicResource Amber}"/>
-            </TextBlock>
+        FontFamily="{StaticResource Mono}" FontSize="13" UseLayoutRounding="True">
+    <Window.Resources>
+        <Style x:Key="Page" TargetType="ScrollViewer">
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="Visibility" Value="Collapsed"/>
+        </Style>
+        <Style x:Key="PageTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+        <Style x:Key="PageDesc" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,6,0,20"/>
+        </Style>
+        <Style x:Key="Field" TargetType="TextBlock" BasedOn="{StaticResource Hdr}">
+            <Setter Property="Margin" Value="0,14,0,6"/>
+        </Style>
+        <Style x:Key="SrvItem" TargetType="ListBoxItem">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="B" Padding="10,8" Margin="0,0,0,6" CornerRadius="6" BorderThickness="1"
+                                BorderBrush="{DynamicResource Line}" Background="Transparent">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource BgAlt}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource AmberTint}"/>
+                                <Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource Amber}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
 
-            <TextBlock Text="URL ПАНЕЛИ" Style="{StaticResource Hdr}" Margin="0,20,0,6"/>
-            <TextBox x:Name="Url" Style="{StaticResource Input}"/>
+    <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
 
-            <TextBlock Text="API-ТОКЕН (хранится зашифрованным)" Style="{StaticResource Hdr}" Margin="0,14,0,6"/>
-            <PasswordBox x:Name="Token" Style="{StaticResource InputPwd}"/>
-
-            <TextBlock Text="ИНТЕРВАЛ ОБНОВЛЕНИЯ, СЕК" Style="{StaticResource Hdr}" Margin="0,14,0,6"/>
-            <TextBox x:Name="Interval" Style="{StaticResource Input}"/>
-
-            <TextBlock Text="СЧИТАТЬ ОНЛАЙН, ЕСЛИ БЫЛ АКТИВЕН ПОСЛЕДНИЕ, СЕК" Style="{StaticResource Hdr}" Margin="0,14,0,6"/>
-            <TextBox x:Name="OnlineBox" Style="{StaticResource Input}"/>
-
-            <TextBlock Text="PROMETHEUS /metrics (для нагрузки нод)" Style="{StaticResource Hdr}" Margin="0,22,0,6"/>
-            <TextBox x:Name="MetricsUrlBox" Style="{StaticResource Input}"/>
-            <Grid Margin="0,8,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <TextBox x:Name="MetricsUserBox" Style="{StaticResource Input}" ToolTip="логин Basic Auth"/>
-                <PasswordBox x:Name="MetricsPassBox" Grid.Column="2" Style="{StaticResource InputPwd}" ToolTip="пароль Basic Auth"/>
-            </Grid>
-            <Button Content="сохранить /metrics в файл" Style="{StaticResource Btn}" Margin="0,10,0,0"
-                    HorizontalAlignment="Left" Click="Dump_Click"/>
-
-            <TextBlock Text="ПРОВЕРКА НОД С ЭТОГО ПК" Style="{StaticResource Hdr}" Margin="0,22,0,8"/>
-            <CheckBox x:Name="ProbeBox" Style="{StaticResource Check}" Content="проверять ping и порт каждой ноды"/>
-            <CheckBox x:Name="RuBox" Style="{StaticResource Check}" Margin="0,12,0,0"
-                      Content="проверять доступность из России (check-host.net)"
-                      ToolTip="раз в 10 минут адрес и порт каждой ноды отправляются на check-host.net"/>
-            <TextBlock Text="ПОРТ ДЛЯ ПРОВЕРКИ (0 — только ping)" Style="{StaticResource Hdr}" Margin="0,12,0,6"/>
-            <TextBox x:Name="ProbePortBox" Style="{StaticResource Input}"/>
-
-            <TextBlock Text="САЙТЫ ДЛЯ ВКЛАДКИ «СЕРВИСЫ» (по одному в строке)" Style="{StaticResource Hdr}" Margin="0,22,0,6"/>
-            <TextBox x:Name="ServicesBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="120"
-                     VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"/>
-
-            <TextBlock x:Name="UpdVerText" Style="{StaticResource Hdr}" Margin="0,22,0,6"/>
-            <TextBlock Text="РЕПОЗИТОРИЙ GITHUB (owner/repo)" Style="{StaticResource Hdr}" Margin="0,0,0,6"/>
-            <TextBox x:Name="UpdateRepoBox" Style="{StaticResource Input}"/>
-            <TextBlock Text="ТОКЕН ТОЛЬКО НА ЧТЕНИЕ (Contents: Read)" Style="{StaticResource Hdr}" Margin="0,12,0,6"/>
-            <PasswordBox x:Name="UpdateTokenBox" Style="{StaticResource InputPwd}"/>
-            <Button Content="проверить обновления" Style="{StaticResource Btn}" Margin="0,10,0,0"
-                    HorizontalAlignment="Left" Click="CheckUpdate_Click"/>
-
-            <TextBlock Text="TELEGRAM" Style="{StaticResource Hdr}" Margin="0,22,0,8"/>
-            <CheckBox x:Name="TgBox" Style="{StaticResource Check}" Content="отправлять уведомления в Telegram"/>
-            <TextBlock Text="ТОКЕН БОТА (от @BotFather; хранится зашифрованным)" Style="{StaticResource Hdr}" Margin="0,12,0,6"/>
-            <PasswordBox x:Name="TgTokenBox" Style="{StaticResource InputPwd}"/>
-            <TextBlock Text="ID ЧАТА (сначала напишите боту любое сообщение)" Style="{StaticResource Hdr}" Margin="0,12,0,6"/>
-            <Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBox x:Name="TgChatBox" Style="{StaticResource Input}"/>
-                <Button Grid.Column="1" Content="привязать чат" Style="{StaticResource Btn}" Click="TgBind_Click"/>
-            </Grid>
-            <TextBlock Text="ПРОКСИ (необязательно): http://host:port или socks5://host:port" Style="{StaticResource Hdr}" Margin="0,12,0,6"/>
-            <TextBox x:Name="TgProxyBox" Style="{StaticResource Input}"/>
-            <TextBlock Text="ЧТО ПРИСЫЛАТЬ" Style="{StaticResource Hdr}" Margin="0,14,0,4"/>
-            <CheckBox x:Name="TgNodesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="ноды и связь с панелью"/>
-            <CheckBox x:Name="TgServicesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="сайты и сертификаты"/>
-            <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="лимиты трафика и подписки пользователей"/>
-            <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="оплата серверов"/>
-            <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="новые версии (панель, ноды, программа)"/>
-            <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,12,0,0" HorizontalAlignment="Left" Click="TgTest_Click"/>
-
-            <TextBlock Text="ТЕМА" Style="{StaticResource Hdr}" Margin="0,22,0,8"/>
-            <StackPanel Orientation="Horizontal">
-                <RadioButton x:Name="DarkRb" GroupName="theme" Content="тёмная" Style="{StaticResource PillTab}"/>
-                <RadioButton x:Name="LightRb" GroupName="theme" Content="светлая" Style="{StaticResource PillTab}"/>
+        <!-- боковое меню -->
+        <Border Grid.RowSpan="2" Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
+            <StackPanel Margin="14,22,14,14">
+                <TextBlock FontSize="15" FontWeight="Bold" Margin="10,0,0,20">
+                    <Run Text="настройки"/><Run Text="_" Foreground="{DynamicResource Amber}"/>
+                </TextBlock>
+                <RadioButton GroupName="nav" Tag="PagePanel" Content="панель" Style="{StaticResource NavItem}" IsChecked="True" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageSsh" Content="серверы · SSH" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageChecks" Content="проверки нод" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageSites" Content="сайты" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageTg" Content="telegram" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageUpdates" Content="обновления" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageMetrics" Content="метрики" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageGeneral" Content="общие" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
             </StackPanel>
+        </Border>
 
-            <CheckBox x:Name="AutoBox" Style="{StaticResource Check}" Margin="0,20,0,0"
-                      Content="запускать вместе с Windows (свёрнуто в трей)"/>
+        <Grid Grid.Column="1">
+            <!-- ===== панель ===== -->
+            <ScrollViewer x:Name="PagePanel" Style="{StaticResource Page}" Visibility="Visible">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="панель Remnawave" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Text="Откуда брать пользователей и ноды. Достаточно API-токена только на чтение." Style="{StaticResource PageDesc}"/>
+                    <TextBlock Text="URL ПАНЕЛИ" Style="{StaticResource Hdr}" Margin="0,0,0,6"/>
+                    <TextBox x:Name="Url" Style="{StaticResource Input}"/>
+                    <TextBlock Text="API-ТОКЕН (хранится зашифрованным)" Style="{StaticResource Field}"/>
+                    <PasswordBox x:Name="Token" Style="{StaticResource InputPwd}"/>
+                    <TextBlock Text="ИНТЕРВАЛ ОБНОВЛЕНИЯ, СЕК" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="Interval" Style="{StaticResource Input}"/>
+                    <TextBlock Text="СЧИТАТЬ ОНЛАЙН, ЕСЛИ БЫЛ АКТИВЕН ПОСЛЕДНИЕ, СЕК" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="OnlineBox" Style="{StaticResource Input}"/>
+                </StackPanel>
+            </ScrollViewer>
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+            <!-- ===== серверы (SSH) ===== -->
+            <ScrollViewer x:Name="PageSsh" Style="{StaticResource Page}">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="серверы · SSH" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Style="{StaticResource PageDesc}"
+                               Text="Загрузка CPU, память и диск каждой ноды. Вход под отдельным пользователем с паролем: он может только выдать статистику — без консоли и других команд. Данные видны во вкладке «ноды»."/>
+                    <TextBlock x:Name="SrvEmpty" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{DynamicResource Dim}"
+                               Text="Список нод появится после первого ответа панели. Закройте настройки и откройте их снова чуть позже."/>
+                    <Grid x:Name="SrvBlock">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <ListBox x:Name="SrvList" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Fg}"
+                                 ItemContainerStyle="{StaticResource SrvItem}" VerticalAlignment="Top"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="SrvList_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Ellipse Width="7" Height="7" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,6,0,0">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="{DynamicResource Dim}"/>
+                                                    <Setter Property="Opacity" Value="0.5"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Enabled}" Value="True">
+                                                            <Setter Property="Fill" Value="{DynamicResource Green}"/>
+                                                            <Setter Property="Opacity" Value="1"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Node}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Host}" FontSize="11" Foreground="{DynamicResource Dim}" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <StackPanel x:Name="SrvForm" Grid.Column="2">
+                            <TextBlock x:Name="SrvTitle" FontSize="14" FontWeight="Bold"/>
+                            <CheckBox x:Name="SrvEnabled" Style="{StaticResource Check}" Margin="0,12,0,0"
+                                      Content="собирать статистику с этого сервера" Click="SrvEnabled_Click"/>
+                            <TextBlock Text="АДРЕС И ПОРТ SSH" Style="{StaticResource Field}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
+                                <TextBox x:Name="SrvHost" Style="{StaticResource Input}"/>
+                                <TextBox x:Name="SrvPort" Grid.Column="2" Style="{StaticResource Input}"/>
+                            </Grid>
+                            <TextBlock Text="ПОЛЬЗОВАТЕЛЬ (отдельный, не root)" Style="{StaticResource Field}"/>
+                            <TextBox x:Name="SrvUser" Style="{StaticResource Input}"/>
+                            <TextBlock Text="ПАРОЛЬ (хранится зашифрованным)" Style="{StaticResource Field}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <PasswordBox x:Name="SrvPass" Style="{StaticResource InputPwd}"/>
+                                <Button Grid.Column="1" Content="сгенерировать" Style="{StaticResource Btn}" Click="SrvGen_Click"/>
+                            </Grid>
+                            <WrapPanel Margin="0,16,0,0">
+                                <Button Content="скопировать команду установки" Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Click="SrvCopy_Click"/>
+                                <Button Content="проверить подключение" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="SrvTest_Click"/>
+                            </WrapPanel>
+                            <TextBlock x:Name="SrvResult" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"/>
+                            <DockPanel Margin="0,14,0,0">
+                                <Button DockPanel.Dock="Right" Content="сбросить ключ" Style="{StaticResource Btn}" Click="SrvResetKey_Click"
+                                        ToolTip="если сервер переустанавливали — ключ запомнится заново при следующем подключении"/>
+                                <TextBlock x:Name="SrvKey" FontSize="11" Foreground="{DynamicResource Dim}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <Border Margin="0,18,0,0" Padding="14,12" CornerRadius="8" BorderThickness="1"
+                                    BorderBrush="{DynamicResource Line}" Background="{DynamicResource Panel}">
+                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Dim}" LineHeight="19">
+                                    <Run Text="как подключить сервер" FontWeight="Bold" Foreground="{DynamicResource Fg}"/><LineBreak/>
+                                    <Run Text="1. Нажмите «сгенерировать» — появится надёжный пароль."/><LineBreak/>
+                                    <Run Text="2. «скопировать команду установки» и вставьте её в консоль сервера под root. Дождитесь строки «RW-MONITOR: готово»."/><LineBreak/>
+                                    <Run Text="3. Включите «собирать статистику», нажмите «проверить подключение», затем «сохранить»."/>
+                                </TextBlock>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== проверки нод ===== -->
+            <ScrollViewer x:Name="PageChecks" Style="{StaticResource Page}">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="проверки нод" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Text="Доступность каждой ноды с этого компьютера и из России." Style="{StaticResource PageDesc}"/>
+                    <CheckBox x:Name="ProbeBox" Style="{StaticResource Check}" Content="проверять ping и порт каждой ноды"/>
+                    <CheckBox x:Name="RuBox" Style="{StaticResource Check}" Margin="0,12,0,0"
+                              Content="проверять доступность из России (check-host.net)"
+                              ToolTip="раз в 10 минут адрес и порт каждой ноды отправляются на check-host.net"/>
+                    <TextBlock Text="ПОРТ ДЛЯ ПРОВЕРКИ (0 — только ping)" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="ProbePortBox" Style="{StaticResource Input}" Width="160" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== сайты ===== -->
+            <ScrollViewer x:Name="PageSites" Style="{StaticResource Page}">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="сайты" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Text="Адреса для вкладки «сервисы», по одному в строке. Проверяются раз в минуту: ответ, время, срок сертификата." Style="{StaticResource PageDesc}"/>
+                    <TextBox x:Name="ServicesBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="320"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== telegram ===== -->
+            <ScrollViewer x:Name="PageTg" Style="{StaticResource Page}">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="telegram" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Text="Тревоги и команды в Telegram. Работает, пока программа запущена." Style="{StaticResource PageDesc}"/>
+                    <CheckBox x:Name="TgBox" Style="{StaticResource Check}" Content="отправлять уведомления в Telegram"/>
+                    <TextBlock Text="ТОКЕН БОТА (от @BotFather; хранится зашифрованным)" Style="{StaticResource Field}"/>
+                    <PasswordBox x:Name="TgTokenBox" Style="{StaticResource InputPwd}"/>
+                    <TextBlock Text="ID ЧАТА (сначала напишите боту любое сообщение)" Style="{StaticResource Field}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="TgChatBox" Style="{StaticResource Input}"/>
+                        <Button Grid.Column="1" Content="привязать чат" Style="{StaticResource Btn}" Click="TgBind_Click"/>
+                    </Grid>
+                    <TextBlock Text="ПРОКСИ (необязательно): http://host:port или socks5://host:port" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="TgProxyBox" Style="{StaticResource Input}"/>
+                    <TextBlock Text="ЧТО ПРИСЫЛАТЬ" Style="{StaticResource Field}" Margin="0,20,0,4"/>
+                    <CheckBox x:Name="TgNodesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="ноды и связь с панелью"/>
+                    <CheckBox x:Name="TgServicesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="сайты и сертификаты"/>
+                    <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="лимиты трафика и подписки пользователей"/>
+                    <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="оплата серверов"/>
+                    <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="новые версии (панель, ноды, программа)"/>
+                    <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,16,0,0" HorizontalAlignment="Left" Click="TgTest_Click"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== обновления ===== -->
+            <ScrollViewer x:Name="PageUpdates" Style="{StaticResource Page}">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="обновления программы" Style="{StaticResource PageTitle}"/>
+                    <TextBlock x:Name="UpdVerText" Style="{StaticResource PageDesc}"/>
+                    <TextBlock Text="РЕПОЗИТОРИЙ GITHUB (owner/repo)" Style="{StaticResource Hdr}" Margin="0,0,0,6"/>
+                    <TextBox x:Name="UpdateRepoBox" Style="{StaticResource Input}"/>
+                    <TextBlock Text="ТОКЕН ТОЛЬКО НА ЧТЕНИЕ (Contents: Read)" Style="{StaticResource Field}"/>
+                    <PasswordBox x:Name="UpdateTokenBox" Style="{StaticResource InputPwd}"/>
+                    <Button Content="проверить обновления" Style="{StaticResource Btn}" Margin="0,16,0,0"
+                            HorizontalAlignment="Left" Click="CheckUpdate_Click"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== метрики ===== -->
+            <ScrollViewer x:Name="PageMetrics" Style="{StaticResource Page}">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="метрики Prometheus" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Text="Адрес /metrics панели и данные Basic Auth. Кнопка сохраняет ответ в файл для разбора." Style="{StaticResource PageDesc}"/>
+                    <TextBlock Text="URL /metrics" Style="{StaticResource Hdr}" Margin="0,0,0,6"/>
+                    <TextBox x:Name="MetricsUrlBox" Style="{StaticResource Input}"/>
+                    <TextBlock Text="ЛОГИН И ПАРОЛЬ" Style="{StaticResource Field}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="MetricsUserBox" Style="{StaticResource Input}" ToolTip="логин Basic Auth"/>
+                        <PasswordBox x:Name="MetricsPassBox" Grid.Column="2" Style="{StaticResource InputPwd}" ToolTip="пароль Basic Auth"/>
+                    </Grid>
+                    <Button Content="сохранить /metrics в файл" Style="{StaticResource Btn}" Margin="0,16,0,0"
+                            HorizontalAlignment="Left" Click="Dump_Click"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== общие ===== -->
+            <ScrollViewer x:Name="PageGeneral" Style="{StaticResource Page}">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="общие" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Text="Оформление и запуск вместе с Windows." Style="{StaticResource PageDesc}"/>
+                    <TextBlock Text="ТЕМА" Style="{StaticResource Hdr}" Margin="0,0,0,8"/>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="DarkRb" GroupName="theme" Content="тёмная" Style="{StaticResource PillTab}"/>
+                        <RadioButton x:Name="LightRb" GroupName="theme" Content="светлая" Style="{StaticResource PillTab}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="AutoBox" Style="{StaticResource Check}" Margin="0,22,0,0"
+                              Content="запускать вместе с Windows (свёрнуто в трей)"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- кнопки -->
+        <Border Grid.Column="1" Grid.Row="1" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="30,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="отмена" Style="{StaticResource Btn}" IsCancel="True"/>
                 <Button Content="сохранить" Style="{StaticResource BtnPrimary}" IsDefault="True" Click="Save_Click"/>
             </StackPanel>
-        </StackPanel>
-    </ScrollViewer>
+        </Border>
+    </Grid>
 </Window>

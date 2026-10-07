@@ -296,6 +296,80 @@
         </Style.Triggers>
     </Style>
 
+    <!-- шкалы CPU / RAM / диск в карточке ноды: уровень передаётся через Tag (ok / warn / crit / none) -->
+    <Style x:Key="MeterLbl" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+        <Setter Property="Width" Value="40"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="MeterBar" TargetType="ProgressBar">
+        <Setter Property="Width" Value="84"/>
+        <Setter Property="Height" Value="4"/>
+        <Setter Property="Maximum" Value="1"/>
+        <Setter Property="Margin" Value="0,0,10,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Foreground" Value="Transparent"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Grid>
+                        <Border x:Name="PART_Track" Background="{DynamicResource Line}" CornerRadius="2"/>
+                        <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="2"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="Tag" Value="ok"><Setter Property="Foreground" Value="{DynamicResource Green}"/></Trigger>
+            <Trigger Property="Tag" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></Trigger>
+            <Trigger Property="Tag" Value="crit"><Setter Property="Foreground" Value="{DynamicResource Red}"/></Trigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="MeterPct" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Width" Value="46"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Style.Triggers>
+            <Trigger Property="Tag" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></Trigger>
+            <Trigger Property="Tag" Value="crit"><Setter Property="Foreground" Value="{DynamicResource Red}"/></Trigger>
+            <Trigger Property="Tag" Value="none">
+                <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+                <Setter Property="FontWeight" Value="Normal"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- пункт бокового меню настроек -->
+    <Style x:Key="NavItem" TargetType="RadioButton">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Margin" Value="0,0,0,4"/>
+        <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="B" CornerRadius="6" Padding="12,9" Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="B" Property="Background" Value="{DynamicResource Panel}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="B" Property="Background" Value="{DynamicResource AmberTint}"/>
+                            <Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource Amber}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Amber}"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="ContextMenu">
         <Setter Property="Background" Value="{DynamicResource Panel}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
