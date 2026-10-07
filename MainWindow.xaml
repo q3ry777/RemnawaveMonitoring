@@ -287,11 +287,7 @@
                                                     <TextBlock Text="{Binding DiskPctText}" Style="{StaticResource MeterPct}" Tag="{Binding DiskLevel}"/>
                                                 </StackPanel>
                                                 <TextBlock Grid.Column="4" Text="{Binding Down}" FontSize="12" Foreground="{DynamicResource Green}" VerticalAlignment="Center"/>
-                                                <DockPanel Grid.Column="5" VerticalAlignment="Center">
-                                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Up}" FontSize="12" Foreground="{DynamicResource Amber}" Margin="0,0,14,0"/>
-                                                    <TextBlock Text="{Binding SrvNote}" FontSize="12" Foreground="{DynamicResource Red}"
-                                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding SrvNote}"/>
-                                                </DockPanel>
+                                                <TextBlock Grid.Column="5" Text="{Binding Up}" FontSize="12" Foreground="{DynamicResource Amber}" VerticalAlignment="Center"/>
                                             </Grid>
                                             <!-- строка 3: доступность, версии и оплата -->
                                             <Grid Margin="0,8,0,0">
@@ -312,7 +308,7 @@
                                                 </Grid.Style>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="22"/><ColumnDefinition Width="165"/><ColumnDefinition Width="145"/>
-                                                    <ColumnDefinition Width="205"/><ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="260"/><ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="1" Text="{Binding PingText}" FontSize="12">
                                                     <TextBlock.Style>
@@ -358,6 +354,19 @@
                                                     </TextBlock.Style>
                                                 </TextBlock>
                                             </Grid>
+                                            <!-- строка 4: ошибка сбора статистики по SSH -->
+                                            <TextBlock Text="{Binding SrvNote}" FontSize="12" Foreground="{DynamicResource Red}" Margin="22,8,0,0"
+                                                       TextTrimming="CharacterEllipsis">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SrvNote}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
