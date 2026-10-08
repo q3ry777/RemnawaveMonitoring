@@ -206,16 +206,17 @@ public record NodeRow(
     int UsersOnline, bool Connected, bool XrayOk, string Address,
     string PingText = "", string PingLevel = "", string BillingText = "", string BillingLevel = "",
     string RuText = "", string RuLevel = "", string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
-    double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "")
+    double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "",
+    string SrvCpuNote = "")
 {
     // Нагрузка сервера: CPU и диск — только по SSH; память — по SSH, а без него — из панели
     static string Lvl(double v, double warn, double crit) => v < 0 ? "none" : v >= crit ? "crit" : v >= warn ? "warn" : "ok";
-    static string Pct(double v) => $"{v * 100:0}%";
+    static string Pct(double v) => SshStats.Pct(v);
 
     public double CpuVal => Math.Max(0, SrvCpu);
     public string CpuPctText => SrvCpu >= 0 ? Pct(SrvCpu) : "—";
     public string CpuLevel => Lvl(SrvCpu, 0.7, 0.9);
-    public string CpuTip => string.Join(" · ", new[] { Cpu != "—" ? Cpu : "", Load, SrvCpu < 0 ? "загрузка CPU — по SSH (настройки → серверы)" : "" }.Where(x => x != ""));
+    public string CpuTip => string.Join(" · ", new[] { Cpu != "—" ? Cpu : "", Load, SrvCpuNote, SrvCpu < 0 ? "загрузка CPU — по SSH (настройки → серверы)" : "" }.Where(x => x != ""));
 
     public double RamVal => SrvRam >= 0 ? SrvRam : MemPct;
     public string RamPctText => SrvRam >= 0 ? Pct(SrvRam) : MemPctText != "" ? MemPctText : "—";

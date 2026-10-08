@@ -180,10 +180,14 @@ public partial class SettingsWindow : Window
         {
             var (st, key) = await SshStats.CollectAsync(srv.Clone());
             if (srv.HostKey == "" && key != "") srv.HostKey = key;
-            string P(double v) => v >= 0 ? $"{v * 100:0}%" : "—";
+            string P(double v) => v >= 0 ? SshStats.Pct(v) : "—";
             if (srv == _cur)
             {
-                Result($"✓ подключено · CPU {P(st.Cpu)} · RAM {P(st.Ram)} ({st.RamText}) · диск {P(st.Disk)} ({st.DiskText})", "Green");
+                var text = $"✓ подключено · CPU {P(st.Cpu)} · RAM {P(st.Ram)} ({st.RamText}) · диск {P(st.Disk)} ({st.DiskText})";
+                if (st.Legacy)
+                    Result(text + ". На сервере старый скрипт: CPU меряется грубо. Нажмите «скопировать команду установки» и выполните её на сервере ещё раз.", "Amber");
+                else
+                    Result(text + ". В карточке ноды CPU — среднее за минуту.", "Green");
                 ShowKey();
             }
         }

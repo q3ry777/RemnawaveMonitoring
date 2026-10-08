@@ -24,7 +24,10 @@ public class SshServer
     public SshServer Clone() => (SshServer)MemberwiseClone();
 }
 
-public record ServerStats(double Cpu, double Ram, double Disk, string RamText, string DiskText);
+// StatTotal/StatIdle — накопительные счётчики /proc/stat (новый скрипт); Legacy — на сервере стоит старый скрипт без них.
+// CpuWindowSec — за сколько секунд усреднена загрузка CPU (0 — короткий замер скрипта).
+public record ServerStats(double Cpu, double Ram, double Disk, string RamText, string DiskText,
+    double StatTotal = -1, double StatIdle = -1, bool Legacy = true, int CpuWindowSec = 0);
 
 public static class SshStats
 {
@@ -33,7 +36,9 @@ public static class SshStats
     const string ScriptRaw = """
         read -r x a b c d e f g h y < /proc/stat
         t1=$((a+b+c+d+e+f+g+h)); i1=$((d+e))
-        sleep 1
+        echo "rwver 2"
+        echo "stat $t1 $i1"
+        sleep 2
         read -r x a b c d e f g h y < /proc/stat
         t2=$((a+b+c+d+e+f+g+h)); i2=$((d+e))
         echo "cpu $((t2-t1)) $((i2-i1))"
@@ -82,7 +87,7 @@ public static class SshStats
 
     static ServerStats Parse(string output)
     {
-        double cpu = -1, ram = -1, disk = -1;
+        double cpu = -1, ram = -1, disk = -1, statTotal = -1, statIdle = -1;
         string ramText = "", diskText = "";
         foreach (var line in output.Split('\n'))
         {
@@ -92,8 +97,11 @@ public static class SshStats
                 !double.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var b)) continue;
             switch (p[0])
             {
-                case "cpu":    // a — всего тиков, b — простой
+                case "cpu":    // короткий замер скрипта: a — всего тиков, b — простой
                     if (a > 0) cpu = Math.Clamp((a - b) / a, 0, 1);
+                    break;
+                case "stat":   // накопительные счётчики с момента загрузки сервера: a — всего, b — простой
+                    statTotal = a; statIdle = b;
                     break;
                 case "mem":    // a — всего КБ, b — доступно КБ
                     if (a > 0) { ram = Math.Clamp((a - b) / a, 0, 1); ramText = $"{J.Bytes((a - b) * 1024)} / {J.Bytes(a * 1024)}"; }
@@ -104,8 +112,11 @@ public static class SshStats
             }
         }
         if (cpu < 0 && ram < 0 && disk < 0) throw new Exception("сервер не вернул статистику");
-        return new ServerStats(cpu, ram, disk, ramText, diskText);
+        return new ServerStats(cpu, ram, disk, ramText, diskText, statTotal, statIdle, Legacy: statTotal < 0);
     }
+
+    // Проценты: до 10% — с десятыми, чтобы малая нагрузка не превращалась в «0%»
+    public static string Pct(double v) => v < 0.095 ? (v * 100).ToString("0.0") + "%" : (v * 100).ToString("0") + "%";
 
     public static string NewPassword()
     {

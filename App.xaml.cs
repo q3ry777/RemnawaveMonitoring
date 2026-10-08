@@ -27,6 +27,8 @@ public partial class App : Application
     readonly DispatcherTimer _sshTimer = new();
     readonly Dictionary<string, (ServerStats? stats, string error)> _srv = new();
     bool _sshBusy;
+    readonly Dictionary<string, (double total, double idle, DateTime at)> _cpuPrev = new();
+    readonly Dictionary<string, Queue<double>> _cpuHist = new();
     readonly TelegramService _tg = new();
     readonly DispatcherTimer _tgTimer = new();
     IncidentsWindow? _journal;
@@ -352,6 +354,7 @@ public partial class App : Application
                 SrvCpu = st?.Cpu ?? -1, SrvRam = st?.Ram ?? -1, SrvDisk = st?.Disk ?? -1,
                 SrvRamText = st?.RamText ?? "", SrvDiskText = st?.DiskText ?? "",
                 SrvNote = sshErr != "" ? "ssh: " + sshErr : "",
+                SrvCpuNote = st == null ? "" : CpuNote(st),
             };
         }).ToList();
         return s with { Nodes = nodes };
@@ -381,7 +384,7 @@ public partial class App : Application
             bool save = false;
             foreach (var r in results)
             {
-                _srv[r.Srv.Node] = (r.Stats, r.Error);
+                _srv[r.Srv.Node] = (r.Stats == null ? null : AverageCpu(r.Srv.Node, r.Stats), r.Error);
                 if (r.Stats != null && r.Srv.HostKey == "" && r.Key != "") { r.Srv.HostKey = r.Key; save = true; }   // запоминаем ключ сервера
             }
             if (save) _s.Save();
@@ -391,6 +394,36 @@ public partial class App : Application
     }
 
     record SshResult(SshServer Srv, ServerStats? Stats, string Key, string Error);
+
+    // Загрузка CPU — среднее за время между опросами (около минуты) по накопительным счётчикам /proc/stat.
+    // Короткий замер скрипта на многоядерных серверах слишком грубый: при слабой нагрузке он прыгает и часто даёт 0.
+    ServerStats AverageCpu(string node, ServerStats st)
+    {
+        var now = DateTime.Now;
+        if (!st.Legacy)
+        {
+            var res = st;
+            if (_cpuPrev.TryGetValue(node, out var p) && st.StatTotal > p.total && now - p.at < TimeSpan.FromMinutes(10))
+                res = st with
+                {
+                    Cpu = Math.Clamp(1 - (st.StatIdle - p.idle) / (st.StatTotal - p.total), 0, 1),
+                    CpuWindowSec = (int)Math.Round((now - p.at).TotalSeconds),
+                };
+            _cpuPrev[node] = (st.StatTotal, st.StatIdle, now);   // при перезагрузке сервера счётчики сбросятся — возьмём короткий замер
+            return res;
+        }
+
+        // старый скрипт на сервере (без счётчиков): сглаживаем по последним 5 замерам
+        if (!_cpuHist.TryGetValue(node, out var q)) _cpuHist[node] = q = new Queue<double>();
+        if (st.Cpu >= 0) { q.Enqueue(st.Cpu); while (q.Count > 5) q.Dequeue(); }
+        return q.Count > 0 ? st with { Cpu = q.Average(), CpuWindowSec = q.Count > 1 ? -q.Count : 0 } : st;
+    }
+
+    static string CpuNote(ServerStats st) =>
+        st.Legacy
+            ? "на сервере старый скрипт — выполните команду установки ещё раз (настройки → серверы)" +
+              (st.CpuWindowSec < 0 ? $" · среднее {-st.CpuWindowSec} замеров" : "")
+            : st.CpuWindowSec > 0 ? $"среднее за {st.CpuWindowSec} с" : "замер за 2 с";
 
     void ReapplyExtras()
     {
