@@ -214,7 +214,14 @@
                     <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="лимиты трафика и подписки пользователей"/>
                     <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="оплата серверов"/>
                     <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="новые версии (панель, ноды, программа)"/>
-                    <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,16,0,0" HorizontalAlignment="Left" Click="TgTest_Click"/>
+                    <TextBlock Text="НЕ БЕСПОКОИТЬ" Style="{StaticResource Field}" Margin="0,22,0,8"/>
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox x:Name="TgDndBox" Style="{StaticResource Check}" Content="не присылать уведомления до" VerticalAlignment="Center" Click="TgDnd_Click"/>
+                        <TextBox x:Name="TgDndTimeBox" Style="{StaticResource Input}" Width="90" Margin="12,0,0,0" TextChanged="TgDndTime_Changed"
+                                 ToolTip="время по часам компьютера, например 08:00"/>
+                    </StackPanel>
+                    <TextBlock x:Name="TgDndHint" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource Dim}"/>
+                    <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,18,0,0" HorizontalAlignment="Left" Click="TgTest_Click"/>
                 </StackPanel>
             </ScrollViewer>
 

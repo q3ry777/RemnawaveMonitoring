@@ -109,7 +109,12 @@ public partial class App : Application
         _tg.Configure(_s);
         _tg.Handler = HandleTg;
         if (_s.MonitorSince == null) { _s.MonitorSince = DateTime.Now; _s.Save(); }
-        _tgTimer.Tick += async (_, _) => await _tg.TickAsync();
+        _tgTimer.Tick += async (_, _) =>
+        {
+            // время «не беспокоить» вышло — режим выключается сам
+            if (_s.TgDnd && !_s.TgDndActive) { _s.TgDnd = false; _s.TgDndUntil = null; _s.Save(); }
+            await _tg.TickAsync();
+        };
         _tgTimer.Interval = TimeSpan.FromSeconds(5);
         _tgTimer.Start();
 
@@ -735,7 +740,7 @@ public partial class App : Application
             "nodes" => _s.TgNodes, "services" => _s.TgServices, "limits" => _s.TgLimits,
             "billing" => _s.TgBilling, "updates" => _s.TgUpdates, _ => true,
         };
-        if (_s.TgEnabled && allowed) _tg.Enqueue(text);
+        if (_s.TgEnabled && allowed && !_s.TgDndActive) _tg.Enqueue(text);   // в режиме «не беспокоить» тревоги не уходят, ответы на команды — уходят
     }
 
     string BuildStatus()

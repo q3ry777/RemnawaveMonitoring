@@ -53,6 +53,9 @@ public partial class SettingsWindow : Window
         TgLimitsBox.IsChecked = s.TgLimits;
         TgBillingBox.IsChecked = s.TgBilling;
         TgUpdatesBox.IsChecked = s.TgUpdates;
+        TgDndBox.IsChecked = s.TgDndActive;
+        TgDndTimeBox.Text = s.TgDndTime;
+        UpdateDndHint();
 
         // обновления и метрики
         UpdVerText.Text = $"Новые версии из релизов приватного репозитория GitHub. Сейчас установлена версия {Updater.CurrentText}.";
@@ -206,6 +209,9 @@ public partial class SettingsWindow : Window
         _s.TgLimits = TgLimitsBox.IsChecked == true;
         _s.TgBilling = TgBillingBox.IsChecked == true;
         _s.TgUpdates = TgUpdatesBox.IsChecked == true;
+        if (Settings.TryParseTime(TgDndTimeBox.Text, out var dnd)) _s.TgDndTime = dnd.ToString(@"hh\:mm");
+        _s.TgDnd = TgDndBox.IsChecked == true && Settings.TryParseTime(TgDndTimeBox.Text, out _);
+        _s.TgDndUntil = _s.TgDnd ? Settings.NextAt(dnd) : null;
         _s.ProbeEnabled = ProbeBox.IsChecked == true;
         _s.RuCheckEnabled = RuBox.IsChecked == true;
         _s.ProbePort = int.TryParse(ProbePortBox.Text, out var pp) && pp is >= 0 and <= 65535 ? pp : 443;
@@ -222,6 +228,34 @@ public partial class SettingsWindow : Window
     {
         TgToken = TgTokenBox.Password.Trim(), TgChatId = TgChatBox.Text.Trim(), TgProxy = TgProxyBox.Text.Trim(),
     };
+
+    void TgDnd_Click(object sender, RoutedEventArgs e) => UpdateDndHint();
+    void TgDndTime_Changed(object sender, TextChangedEventArgs e) => UpdateDndHint();
+
+    // Подсказка считается по часам компьютера: до какого момента уведомления не придут
+    void UpdateDndHint()
+    {
+        if (TgDndHint == null) return;
+        var now = DateTime.Now;
+        if (!Settings.TryParseTime(TgDndTimeBox.Text, out var t))
+        {
+            TgDndHint.Text = "Время в формате ЧЧ:ММ, например 08:00.";
+            TgDndHint.SetResourceReference(TextBlock.ForegroundProperty, "Red");
+            return;
+        }
+        TgDndHint.SetResourceReference(TextBlock.ForegroundProperty, "Dim");
+        if (TgDndBox.IsChecked != true)
+        {
+            TgDndHint.Text = $"Выключено. Сейчас на компьютере {now:HH:mm}.";
+            return;
+        }
+        var until = Settings.NextAt(t);
+        var day = until.Date == now.Date ? "сегодня" : "завтра";
+        TgDndHint.Text = $"Уведомления не придут до {until:HH:mm} ({day}, {until:dd.MM}) — ещё {Left(until - now)}. " +
+                         $"Сейчас на компьютере {now:HH:mm}. Ответы на команды бота приходят как обычно, события пишутся в журнал.";
+    }
+
+    static string Left(TimeSpan d) => d.TotalHours >= 1 ? $"{(int)d.TotalHours} ч {d.Minutes} мин" : $"{Math.Max(1, d.Minutes)} мин";
 
     async void TgBind_Click(object sender, RoutedEventArgs e)
     {

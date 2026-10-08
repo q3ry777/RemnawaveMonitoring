@@ -59,6 +59,28 @@ public class Settings
     public bool TgBilling { get; set; } = true;
     public bool TgUpdates { get; set; } = true;
 
+    // «Не беспокоить»: уведомления в Telegram не отправляются до указанного времени (часы компьютера)
+    public bool TgDnd { get; set; }
+    public string TgDndTime { get; set; } = "08:00";
+    public DateTime? TgDndUntil { get; set; }
+
+    [JsonIgnore] public bool TgDndActive => TgDnd && TgDndUntil is DateTime u && DateTime.Now < u;
+
+    public static bool TryParseTime(string text, out TimeSpan t)
+    {
+        t = default;
+        var s = text.Trim().Replace('.', ':');
+        if (!TimeSpan.TryParseExact(s, new[] { @"h\:mm", @"hh\:mm", "%h", "hh" }, CultureInfo.InvariantCulture, out t)) return false;
+        return t >= TimeSpan.Zero && t < TimeSpan.FromDays(1);
+    }
+
+    // Ближайший момент с этим временем по часам компьютера: сегодня, если ещё не наступил, иначе завтра
+    public static DateTime NextAt(TimeSpan t)
+    {
+        var at = DateTime.Today + t;
+        return at > DateTime.Now ? at : at.AddDays(1);
+    }
+
     public string UpdateRepo { get; set; } = "";
     [JsonIgnore] public string UpdateToken { get; set; } = "";
     public string? UpdateTokenEnc { get; set; }
