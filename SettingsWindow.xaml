@@ -23,6 +23,34 @@
         <Style x:Key="Field" TargetType="TextBlock" BasedOn="{StaticResource Hdr}">
             <Setter Property="Margin" Value="0,14,0,6"/>
         </Style>
+        <Style x:Key="HourToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Margin" Value="0,0,4,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="B" CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource Line}" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource BgAlt}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource AmberTint}"/>
+                                <Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource Amber}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource Amber}"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="SrvItem" TargetType="ListBoxItem">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
@@ -221,6 +249,16 @@
                                  ToolTip="время по часам компьютера, например 08:00"/>
                     </StackPanel>
                     <TextBlock x:Name="TgDndHint" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource Dim}"/>
+
+                    <CheckBox x:Name="TgQuietBox" Style="{StaticResource Check}" Margin="0,20,0,0"
+                              Content="тихие часы по расписанию — каждый день" Click="TgQuiet_Click"/>
+                    <TextBlock Text="ЧАСЫ ТИШИНЫ (нажмите на час: 23 = с 23:00 до 23:59)" Style="{StaticResource Field}"/>
+                    <UniformGrid x:Name="QuietGrid" Rows="2" Columns="12" HorizontalAlignment="Left"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button Content="ночь 23–08" Style="{StaticResource Btn}" Margin="0,0,8,0" Click="QuietNight_Click"/>
+                        <Button Content="очистить" Style="{StaticResource Btn}" Margin="0" Click="QuietClear_Click"/>
+                    </StackPanel>
+                    <TextBlock x:Name="TgQuietHint" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource Dim}"/>
                     <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,18,0,0" HorizontalAlignment="Left" Click="TgTest_Click"/>
                 </StackPanel>
             </ScrollViewer>

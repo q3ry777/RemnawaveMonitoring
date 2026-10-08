@@ -113,6 +113,7 @@ public partial class App : Application
         {
             // время «не беспокоить» вышло — режим выключается сам
             if (_s.TgDnd && !_s.TgDndActive) { _s.TgDnd = false; _s.TgDndUntil = null; _s.Save(); }
+            UpdateDndChip();
             await _tg.TickAsync();
         };
         _tgTimer.Interval = TimeSpan.FromSeconds(5);
@@ -191,6 +192,7 @@ public partial class App : Application
         if (w.ShowDialog() != true) return;
         _s.Save();
         _tg.Configure(_s);
+        UpdateDndChip();
         _timer.Interval = TimeSpan.FromSeconds(_s.IntervalSec);
         _ = Refresh(true);
         _ = RefreshServices();
@@ -740,7 +742,14 @@ public partial class App : Application
             "nodes" => _s.TgNodes, "services" => _s.TgServices, "limits" => _s.TgLimits,
             "billing" => _s.TgBilling, "updates" => _s.TgUpdates, _ => true,
         };
-        if (_s.TgEnabled && allowed && !_s.TgDndActive) _tg.Enqueue(text);   // в режиме «не беспокоить» тревоги не уходят, ответы на команды — уходят
+        if (_s.TgEnabled && allowed && !_s.TgSilentNow) _tg.Enqueue(text);   // в режиме «не беспокоить» тревоги не уходят, ответы на команды — уходят
+    }
+
+    // Индикатор в шапке: «☾ тихо до 08:00» — пока уведомления в Telegram не отправляются
+    void UpdateDndChip()
+    {
+        var until = _s.TgEnabled ? _s.SilentUntil(DateTime.Now) : null;
+        _win?.SetDnd(until is DateTime u ? "☾ тихо до " + Settings.WhenText(u) : null);
     }
 
     string BuildStatus()
@@ -751,6 +760,8 @@ public partial class App : Application
         int ok = s.Nodes.Count(n => n.Connected && n.XrayOk);
         var sb = new StringBuilder();
         sb.AppendLine($"📊 Онлайн: {online} · ноды {ok}/{s.Nodes.Count}" + (_svcTotal > 0 ? $" · сайты {_svcOk}/{_svcTotal}" : ""));
+        if (_s.SilentUntil(DateTime.Now) is DateTime su)
+            sb.AppendLine(su == DateTime.MaxValue ? "🔕 Не беспокоить: тихие часы на весь день" : $"🔕 Не беспокоить до {Settings.WhenText(su)}");
         foreach (var n in s.Nodes)
             sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {n.Name} · онлайн {n.UsersOnline}"
                           + (n.SrvCpu >= 0 ? $" · CPU {n.CpuPctText}" : "") + (n.RamPctText != "—" ? $" · RAM {n.RamPctText}" : "") + (n.PingText != "" ? $" · {n.PingText}" : ""));

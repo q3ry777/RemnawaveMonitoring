@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 
 namespace RemnawaveMonitor;
 
@@ -12,6 +13,7 @@ public partial class SettingsWindow : Window
 {
     readonly Settings _s;
     readonly List<SshServer> _servers = new();
+    readonly ToggleButton[] _hours = new ToggleButton[24];
     SshServer? _cur;
 
     public SettingsWindow(Settings s, IEnumerable<(string name, string address)> nodes)
@@ -56,6 +58,15 @@ public partial class SettingsWindow : Window
         TgDndBox.IsChecked = s.TgDndActive;
         TgDndTimeBox.Text = s.TgDndTime;
         UpdateDndHint();
+        for (int h = 0; h < 24; h++)
+        {
+            var b = new ToggleButton { Content = h.ToString("00"), Style = (Style)FindResource("HourToggle"), IsChecked = s.TgQuietHours.Contains(h) };
+            b.Click += (_, _) => UpdateQuietHint();
+            _hours[h] = b;
+            QuietGrid.Children.Add(b);
+        }
+        TgQuietBox.IsChecked = s.TgQuietEnabled;
+        UpdateQuietHint();
 
         // обновления и метрики
         UpdVerText.Text = $"Новые версии из релизов приватного репозитория GitHub. Сейчас установлена версия {Updater.CurrentText}.";
@@ -212,6 +223,8 @@ public partial class SettingsWindow : Window
         if (Settings.TryParseTime(TgDndTimeBox.Text, out var dnd)) _s.TgDndTime = dnd.ToString(@"hh\:mm");
         _s.TgDnd = TgDndBox.IsChecked == true && Settings.TryParseTime(TgDndTimeBox.Text, out _);
         _s.TgDndUntil = _s.TgDnd ? Settings.NextAt(dnd) : null;
+        _s.TgQuietHours = SelectedHours();
+        _s.TgQuietEnabled = TgQuietBox.IsChecked == true && _s.TgQuietHours.Count > 0;
         _s.ProbeEnabled = ProbeBox.IsChecked == true;
         _s.RuCheckEnabled = RuBox.IsChecked == true;
         _s.ProbePort = int.TryParse(ProbePortBox.Text, out var pp) && pp is >= 0 and <= 65535 ? pp : 443;
@@ -253,6 +266,54 @@ public partial class SettingsWindow : Window
         var day = until.Date == now.Date ? "сегодня" : "завтра";
         TgDndHint.Text = $"Уведомления не придут до {until:HH:mm} ({day}, {until:dd.MM}) — ещё {Left(until - now)}. " +
                          $"Сейчас на компьютере {now:HH:mm}. Ответы на команды бота приходят как обычно, события пишутся в журнал.";
+    }
+
+    // ---- тихие часы ----
+    List<int> SelectedHours() => Enumerable.Range(0, 24).Where(h => _hours[h]?.IsChecked == true).ToList();
+
+    void TgQuiet_Click(object sender, RoutedEventArgs e) => UpdateQuietHint();
+
+    void QuietNight_Click(object sender, RoutedEventArgs e)
+    {
+        for (int h = 0; h < 24; h++) _hours[h].IsChecked = h >= 23 || h < 8;
+        UpdateQuietHint();
+    }
+
+    void QuietClear_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var b in _hours) b.IsChecked = false;
+        UpdateQuietHint();
+    }
+
+    // Подсказка по часам компьютера: идут ли тихие часы сейчас и когда начнутся / закончатся
+    void UpdateQuietHint()
+    {
+        if (TgQuietHint == null || _hours[23] == null) return;
+        var now = DateTime.Now;
+        var sel = SelectedHours();
+        TgQuietHint.SetResourceReference(TextBlock.ForegroundProperty, "Dim");
+        if (sel.Count == 0)
+        {
+            TgQuietHint.Text = "Часы не выбраны. Нажмите на часы, когда уведомления не нужны, или «ночь 23–08».";
+            if (TgQuietBox.IsChecked == true) TgQuietHint.SetResourceReference(TextBlock.ForegroundProperty, "Red");
+            return;
+        }
+        var ranges = Settings.QuietRangesText(sel);
+        if (TgQuietBox.IsChecked != true)
+        {
+            TgQuietHint.Text = $"Тихо: {ranges}. Сейчас выключено. Время на компьютере {now:HH:mm}.";
+            return;
+        }
+        var probe = new Settings { TgQuietEnabled = true, TgQuietHours = sel };
+        string state;
+        if (probe.SilentUntil(now) is DateTime until)
+            state = until == DateTime.MaxValue ? "Тихо весь день." : $"Сейчас тихо — до {Settings.WhenText(until)}.";
+        else
+        {
+            var next = Enumerable.Range(1, 23).Select(i => now.Date.AddHours(now.Hour + i)).First(t => sel.Contains(t.Hour));
+            state = $"Сейчас уведомления приходят, тишина начнётся {(next.Date == now.Date ? "сегодня" : "завтра")} в {next:HH:mm}.";
+        }
+        TgQuietHint.Text = $"Тихо каждый день: {ranges}. {state} Время на компьютере {now:HH:mm}.";
     }
 
     static string Left(TimeSpan d) => d.TotalHours >= 1 ? $"{(int)d.TotalHours} ч {d.Minutes} мин" : $"{Math.Max(1, d.Minutes)} мин";

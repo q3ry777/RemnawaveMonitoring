@@ -40,6 +40,11 @@
                                 MouseLeftButtonUp="AppUpdateChip_Click" ToolTip="скачать и установить новую версию программы">
                             <TextBlock x:Name="AppUpdateText" FontSize="11" Foreground="{DynamicResource Green}"/>
                         </Border>
+                        <Border x:Name="DndChip" Visibility="Collapsed" Margin="10,0,0,0" Padding="9,3" CornerRadius="10"
+                                BorderThickness="1" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Panel}"
+                                ToolTip="уведомления в Telegram сейчас не отправляются · настройки → telegram">
+                            <TextBlock x:Name="DndText" FontSize="11" Foreground="{DynamicResource Dim}"/>
+                        </Border>
                     </StackPanel>
                 </DockPanel>
             </Border>

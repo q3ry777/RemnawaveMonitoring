@@ -66,6 +66,60 @@ public class Settings
 
     [JsonIgnore] public bool TgDndActive => TgDnd && TgDndUntil is DateTime u && DateTime.Now < u;
 
+    // Тихие часы по расписанию: каждый день в выбранные часы (час 23 = с 23:00 до 23:59)
+    public bool TgQuietEnabled { get; set; }
+    public List<int> TgQuietHours { get; set; } = new() { 23, 0, 1, 2, 3, 4, 5, 6, 7 };
+
+    public bool QuietHourAt(DateTime t) => TgQuietEnabled && TgQuietHours.Contains(t.Hour);
+
+    // До какого момента уведомления в Telegram не отправляются (разовый режим и тихие часы вместе).
+    // null — сейчас отправлять можно; DateTime.MaxValue — тихие часы выбраны на все сутки.
+    public DateTime? SilentUntil(DateTime now)
+    {
+        var t = now;
+        bool silent = false;
+        for (int i = 0; i < 60; i++)
+        {
+            if (TgDnd && TgDndUntil is DateTime u && t < u) { t = u; silent = true; continue; }
+            if (QuietHourAt(t))
+            {
+                if (TgQuietHours.Distinct().Count() >= 24) return DateTime.MaxValue;
+                t = t.Date.AddHours(t.Hour + 1);
+                silent = true;
+                continue;
+            }
+            break;
+        }
+        return silent ? t : null;
+    }
+
+    [JsonIgnore] public bool TgSilentNow => SilentUntil(DateTime.Now) != null;
+
+    // «23:00–08:00, 13:00–14:00» по набору часов
+    public static string QuietRangesText(IEnumerable<int> hours)
+    {
+        var on = new bool[24];
+        foreach (var h in hours) if (h is >= 0 and < 24) on[h] = true;
+        if (on.All(x => x)) return "весь день";
+        var parts = new List<string>();
+        for (int h = 0; h < 24; h++)
+        {
+            if (!on[h] || on[(h + 23) % 24]) continue;   // начало непрерывного участка
+            int len = 0;
+            while (len < 24 && on[(h + len) % 24]) len++;
+            parts.Add($"{h:00}:00–{(h + len) % 24:00}:00");
+        }
+        return string.Join(", ", parts);
+    }
+
+    // «08:00», «08:00 завтра», «08:00 10.10»
+    public static string WhenText(DateTime t)
+    {
+        if (t == DateTime.MaxValue) return "всегда";
+        var d = (t.Date - DateTime.Today).Days;
+        return d == 0 ? $"{t:HH:mm}" : d == 1 ? $"{t:HH:mm} завтра" : $"{t:HH:mm} {t:dd.MM}";
+    }
+
     public static bool TryParseTime(string text, out TimeSpan t)
     {
         t = default;
