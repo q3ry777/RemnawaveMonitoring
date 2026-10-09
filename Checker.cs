@@ -11,7 +11,7 @@ namespace RemnawaveMonitor;
 
 public record SiteCheck(string Name, bool Ok, int? Ms, string Error);
 public record VpnCheck(string Name, string Address, int Port, string Network, string Security, bool? Ok, int? Ms, bool? TcpOk, string Error,
-    List<SiteCheck> Sites);
+    List<SiteCheck> Sites, int? ConnectMs = null);
 public record CheckerReport(DateTime CheckedAt, string Server, string Error, List<VpnCheck> Results, int Version);
 
 // Xray-чекер на сервере в РФ: установка и чтение результата по SSH
@@ -44,7 +44,7 @@ public static class Checker
                         sites.Add(new SiteCheck(J.S(s, "name"), J.P(s, "ok") is { ValueKind: JsonValueKind.True },
                             J.P(s, "ms") is { ValueKind: JsonValueKind.Number } m ? (int)m.GetDouble() : null, J.S(s, "error")));
                 list.Add(new VpnCheck(J.S(x, "name"), J.S(x, "address"), I("port") ?? 0, J.S(x, "network"), J.S(x, "security"),
-                    B("ok"), I("ms"), B("tcp_ok"), J.S(x, "error"), sites));
+                    B("ok"), I("ms"), B("tcp_ok"), J.S(x, "error"), sites, I("connect_ms")));
             }
         return new CheckerReport(at, J.S(r, "server"), J.S(r, "error"), list, (int)J.N(r, "version"));
     }

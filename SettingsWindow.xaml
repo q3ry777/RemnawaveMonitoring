@@ -223,6 +223,10 @@
                     <TextBox x:Name="ChkUser" Style="{StaticResource Input}" TextChanged="ChkUser_Changed"/>
                     <TextBlock x:Name="ChkUserHint" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"/>
 
+                    <TextBlock Text="ПОДКЛЮЧЕНИЯ ДЛЯ ПРОВЕРКИ (снятые не показываются и не дают уведомлений)" Style="{StaticResource Field}"/>
+                    <StackPanel x:Name="ChkConns"/>
+                    <TextBlock x:Name="ChkConnsHint" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{DynamicResource Dim}"/>
+
                     <TextBlock Text="ПРОВЕРЯТЬ КАЖДЫЕ, МИН" Style="{StaticResource Field}"/>
                     <TextBox x:Name="ChkInterval" Style="{StaticResource Input}" Width="90" HorizontalAlignment="Left"/>
 

@@ -194,8 +194,11 @@ public partial class App : Application
     {
         var nodes = _prev?.Nodes.Select(n => (n.Name, n.Address)).ToList() ?? new List<(string, string)>();
         var users = _prev?.Users.Select(u => (u.Username, u.SubscriptionUrl)).ToList() ?? new List<(string, string)>();
-        var w = new SettingsWindow(_s, nodes, users);
+        var conns = _chkRaw?.Results.Select(r => r.Name).ToList() ?? new List<string>();
+        var w = new SettingsWindow(_s, nodes, users, conns);
         if (w.ShowDialog() != true) return;
+        _chk = Filtered(_chkRaw);
+        UpdateVpnChip();
         _s.Save();
         _tg.Configure(_s);
         UpdateDndChip();
@@ -404,7 +407,11 @@ public partial class App : Application
     record SshResult(SshServer Srv, ServerStats? Stats, string Key, string Error);
 
     // ---- xray-чекер (сервер в РФ): результат забирается по SSH раз в минуту ----
-    CheckerReport? _chk;
+    CheckerReport? _chk, _chkRaw;
+
+    // Подключения, снятые с проверки в настройках, скрываются и не дают тревог
+    CheckerReport? Filtered(CheckerReport? rep) =>
+        rep == null ? null : rep with { Results = rep.Results.Where(r => !_s.CheckerExcluded.Contains(r.Name)).ToList() };
     string _chkError = "";
     bool _chkBusy, _chkSeeded;
     readonly HashSet<string> _vpnKeys = new();
@@ -430,6 +437,8 @@ public partial class App : Application
             _chkError = "";
             Track("checker|ssh", "xray-чекер", false, false, "", "Связь с xray-чекером восстановлена");
             bool fresh = rep != null && rep.CheckedAt != _chk?.CheckedAt;
+            _chkRaw = rep;
+            rep = Filtered(rep);
             _chk = rep;
             if (rep != null)
             {
@@ -511,7 +520,7 @@ public partial class App : Application
         r.Ok == true ? $"✓ {r.Name} {r.Ms} мс{SitesShort(r)}" : r.Ok == false ? $"✗ {r.Name}" : $"— {r.Name}";
 
     static string VpnDetail(VpnCheck r) =>
-        (r.Ok == true ? $"✓ {r.Name} — {r.Ms} мс ({r.Network}/{r.Security})"
+        (r.Ok == true ? $"✓ {r.Name} — отклик {r.Ms} мс" + (r.ConnectMs is int c && c != r.Ms ? $", первое подключение {c} мс" : "") + $" ({r.Network}/{r.Security})"
          : r.Ok == false ? $"✗ {r.Name} — {r.Error}"
          : $"— {r.Name} — {r.Error}")
         + string.Concat(r.Sites.Select(s => s.Ok ? $"\n     ✓ {s.Name} {s.Ms} мс" : $"\n     ✗ {s.Name} — {s.Error}"));

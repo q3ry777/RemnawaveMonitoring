@@ -19,7 +19,10 @@ public partial class SettingsWindow : Window
     readonly List<(string name, string sub)> _users;
     SshServer _chk;
 
-    public SettingsWindow(Settings s, IEnumerable<(string name, string address)> nodes, IEnumerable<(string name, string sub)> users)
+    readonly List<CheckBox> _connBoxes = new();
+
+    public SettingsWindow(Settings s, IEnumerable<(string name, string address)> nodes, IEnumerable<(string name, string sub)> users,
+        IEnumerable<string> checkerConns)
     {
         InitializeComponent();
         SourceInitialized += (_, _) => WinChrome.Apply(this);
@@ -49,6 +52,17 @@ public partial class SettingsWindow : Window
         ChkUser.Text = s.CheckerTestUser;
         ChkInterval.Text = s.CheckerIntervalMin.ToString();
         ChkSites.Text = s.CheckerSites.Replace("\n", "\r\n");
+        // подключения из последнего результата чекера + ранее снятые (их сейчас может не быть в подписке)
+        foreach (var name in checkerConns.Concat(s.CheckerExcluded).Distinct())
+        {
+            var cb = new CheckBox { Content = name, Tag = name, IsChecked = !s.CheckerExcluded.Contains(name),
+                                    Style = (Style)FindResource("Check"), Margin = new Thickness(0, 6, 0, 0) };
+            _connBoxes.Add(cb);
+            ChkConns.Children.Add(cb);
+        }
+        ChkConnsHint.Text = _connBoxes.Count == 0
+            ? "Список появится после первого результата чекера — откройте настройки позже."
+            : "Снимите галочку с подключений, которые проверять не нужно. Действует сразу, переустанавливать чекер не надо.";
         ChkHost.Text = _chk.Host;
         ChkPort.Text = _chk.Port.ToString();
         ChkSshUser.Text = _chk.User;
@@ -321,6 +335,7 @@ public partial class SettingsWindow : Window
         _s.CheckerTestUser = ChkUser.Text.Trim();
         _s.CheckerIntervalMin = int.TryParse(ChkInterval.Text.Trim(), out var ci) && ci is >= 2 and <= 60 ? ci : 5;
         _s.CheckerSites = ChkSites.Text.Replace("\r\n", "\n").Trim();
+        _s.CheckerExcluded = _connBoxes.Where(b => b.IsChecked != true).Select(b => (string)b.Tag).ToList();
         _s.MetricsUrl = MetricsUrlBox.Text.Trim();
         _s.MetricsUser = MetricsUserBox.Text.Trim();
         _s.MetricsPass = MetricsPassBox.Password;

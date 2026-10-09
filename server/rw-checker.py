@@ -144,14 +144,22 @@ def wait_port(port, timeout=5.0):
 
 
 def curl_via(port, url, timeout):
-    """HTTP-запрос через SOCKS-вход Xray. -> (ok, ms, error)"""
-    cmd = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code} %{time_total}", "--max-time", str(timeout),
-           "--noproxy", "", "-x", f"socks5h://127.0.0.1:{port}", url]   # только через Xray, без системных исключений
+    """Два HTTP-запроса подряд через SOCKS-вход Xray в одном соединении. -> (ok, ms, error, connect_ms)
+    connect_ms — первый запрос целиком: рукопожатие с нодой (Reality/TLS), соединение и TLS с сайтом.
+    ms — второй запрос по уже открытому туннелю: реальная задержка через VPN (как «отклик» в клиентах)."""
+    cmd = ["curl", "-sS", "-w", "%{http_code} %{time_total}\n", "--max-time", str(timeout),
+           "--noproxy", "", "-x", f"socks5h://127.0.0.1:{port}",   # только через Xray, без системных исключений
+           "-o", "/dev/null", url, "-o", "/dev/null", url]
     p = subprocess.run(cmd, capture_output=True, text=True)
-    out = p.stdout.strip().split()
-    code = out[0] if out else "000"
-    if p.returncode == 0 and code.startswith(("2", "3")):
-        return True, int(float(out[1]) * 1000), ""
+    lines = [l.split() for l in p.stdout.strip().splitlines() if l.strip()]
+    first = lines[0] if lines else ["000", "0"]
+    code = first[0]
+    if code.startswith(("2", "3")):
+        connect_ms = int(float(first[1]) * 1000)
+        ms = connect_ms
+        if len(lines) > 1 and lines[1][0].startswith(("2", "3")):
+            ms = int(float(lines[1][1]) * 1000)
+        return True, ms, "", connect_ms
     err = p.stderr.strip().splitlines()[-1] if p.stderr.strip() else f"HTTP {code}"
     if p.returncode == 28:
         err = "таймаут"
@@ -161,7 +169,7 @@ def curl_via(port, url, timeout):
         err = "сервер закрыл соединение без ответа"
     elif p.returncode == 97 or "SOCKS" in err:
         err = "Xray не смог установить соединение"
-    return False, None, err[:120]
+    return False, None, err[:120], None
 
 
 def site_via(port, site, timeout):
@@ -191,9 +199,9 @@ def site_via(port, site, timeout):
 
 def check_one(e, port, cfg):
     tcp_ok, tcp_ms = tcp_check(e["address"], e["port"])
-    ok, ms, err = curl_via(port, cfg["test_url"], cfg["timeout"])
+    ok, ms, err, connect_ms = curl_via(port, cfg["test_url"], cfg["timeout"])
     if not ok:  # повтор — чтобы разовая потеря пакетов не давала ложную тревогу
-        ok, ms, err = curl_via(port, cfg["test_url"], cfg["timeout"])
+        ok, ms, err, connect_ms = curl_via(port, cfg["test_url"], cfg["timeout"])
     if not ok and tcp_ok:
         err += " (порт доступен — похоже на блокировку протокола/SNI или ошибку настройки)"
     elif not ok and not tcp_ok:
@@ -205,7 +213,7 @@ def check_one(e, port, cfg):
             if not r["ok"] and not r["error"].startswith("сайт отказал"):
                 r = site_via(port, s, cfg["site_timeout"])  # повтор при сетевой ошибке
             sites.append(r)
-    return {"ok": ok, "ms": ms, "tcp_ok": tcp_ok, "tcp_ms": tcp_ms, "error": "" if ok else err, "sites": sites}
+    return {"ok": ok, "ms": ms, "connect_ms": connect_ms, "tcp_ok": tcp_ok, "tcp_ms": tcp_ms, "error": "" if ok else err, "sites": sites}
 
 
 def main():
