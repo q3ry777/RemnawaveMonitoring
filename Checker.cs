@@ -9,8 +9,10 @@ using System.Threading.Tasks;
 
 namespace RemnawaveMonitor;
 
-public record VpnCheck(string Name, string Address, int Port, string Network, string Security, bool? Ok, int? Ms, bool? TcpOk, string Error);
-public record CheckerReport(DateTime CheckedAt, string Server, string Error, List<VpnCheck> Results);
+public record SiteCheck(string Name, bool Ok, int? Ms, string Error);
+public record VpnCheck(string Name, string Address, int Port, string Network, string Security, bool? Ok, int? Ms, bool? TcpOk, string Error,
+    List<SiteCheck> Sites);
+public record CheckerReport(DateTime CheckedAt, string Server, string Error, List<VpnCheck> Results, int Version);
 
 // Xray-чекер на сервере в РФ: установка и чтение результата по SSH
 public static class Checker
@@ -36,10 +38,15 @@ public static class Checker
             {
                 bool? B(string k) => J.P(x, k) is { } v && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : null;
                 int? I(string k) => J.P(x, k) is { ValueKind: JsonValueKind.Number } v ? (int)v.GetDouble() : null;
+                var sites = new List<SiteCheck>();
+                if (x.TryGetProperty("sites", out var sa) && sa.ValueKind == JsonValueKind.Array)
+                    foreach (var s in sa.EnumerateArray())
+                        sites.Add(new SiteCheck(J.S(s, "name"), J.P(s, "ok") is { ValueKind: JsonValueKind.True },
+                            J.P(s, "ms") is { ValueKind: JsonValueKind.Number } m ? (int)m.GetDouble() : null, J.S(s, "error")));
                 list.Add(new VpnCheck(J.S(x, "name"), J.S(x, "address"), I("port") ?? 0, J.S(x, "network"), J.S(x, "security"),
-                    B("ok"), I("ms"), B("tcp_ok"), J.S(x, "error")));
+                    B("ok"), I("ms"), B("tcp_ok"), J.S(x, "error"), sites));
             }
-        return new CheckerReport(at, J.S(r, "server"), J.S(r, "error"), list);
+        return new CheckerReport(at, J.S(r, "server"), J.S(r, "error"), list, (int)J.N(r, "version"));
     }
 
     static string PyScript()
@@ -51,10 +58,25 @@ public static class Checker
     }
 
     // Команда установки на сервер (выполняется один раз под root)
-    public static string SetupCommand(string sshUser, string password, string subUrl, int intervalMin)
+    // «YouTube https://www.youtube.com/generate_204» по строке -> (название, адрес)
+    public static List<(string name, string url)> ParseSites(string text) =>
+        text.Split('\n').Select(l => l.Trim()).Where(l => l != "" && !l.StartsWith('#')).Select(l =>
+        {
+            int i = l.LastIndexOf(' ');
+            var url = (i < 0 ? l : l[(i + 1)..]).Trim();
+            if (!url.Contains("://")) url = "https://" + url;
+            var name = i < 0 ? (Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : url) : l[..i].Trim();
+            return (name, url);
+        }).ToList();
+
+    public static string SetupCommand(string sshUser, string password, string subUrl, int intervalMin, string sitesText)
     {
         static string Q(string s) => "'" + s.Replace("'", "'\\''") + "'";
-        var cfg = JsonSerializer.Serialize(new Dictionary<string, object> { ["sub_url"] = subUrl });
+        var cfg = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["sub_url"] = subUrl,
+            ["sites"] = ParseSites(sitesText).Select(s => new Dictionary<string, string> { ["name"] = s.name, ["url"] = s.url }).ToList(),
+        });
         var text = $$"""
             bash <<'RWSETUP'
             set -e

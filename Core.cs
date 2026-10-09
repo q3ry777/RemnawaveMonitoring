@@ -145,6 +145,8 @@ public class Settings
     public bool CheckerEnabled { get; set; }
     public string CheckerTestUser { get; set; } = "";
     public int CheckerIntervalMin { get; set; } = 5;
+    public string CheckerSites { get; set; } =
+        "YouTube https://www.youtube.com/generate_204\nInstagram https://www.instagram.com/\nChatGPT https://api.openai.com/v1/models";
     public SshServer Checker { get; set; } = new() { Node = "xray-чекер", User = "rwcheck" };
 
     public string MetricsUrl { get; set; } = "";

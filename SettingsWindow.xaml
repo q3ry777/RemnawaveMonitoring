@@ -226,6 +226,12 @@
                     <TextBlock Text="ПРОВЕРЯТЬ КАЖДЫЕ, МИН" Style="{StaticResource Field}"/>
                     <TextBox x:Name="ChkInterval" Style="{StaticResource Input}" Width="90" HorizontalAlignment="Left"/>
 
+                    <TextBlock Text="САЙТЫ, КОТОРЫЕ ОТКРЫВАЮТСЯ ЧЕРЕЗ КАЖДОЕ ПОДКЛЮЧЕНИЕ (название и адрес, по одному в строке)" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="ChkSites" Style="{StaticResource Input}" AcceptsReturn="True" Height="100"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Видно, если подключение работает, но конкретный сервис через него не открывается (гео-блок, блокировка). Ответ 403/451 считается отказом сайта. После изменения списка выполните команду установки на сервере ещё раз."/>
+
                     <TextBlock Text="СЕРВЕР В РФ: АДРЕС И ПОРТ SSH" Style="{StaticResource Field}"/>
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>

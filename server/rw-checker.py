@@ -13,7 +13,16 @@ DEFAULTS = {
     "test_url": "https://www.gstatic.com/generate_204",
     "timeout": 12,
     "base_port": 20800,
+    # сайты, которые открываются через каждое рабочее подключение (видно гео-блок и блокировки отдельных сервисов)
+    "sites": [
+        {"name": "YouTube", "url": "https://www.youtube.com/generate_204"},
+        {"name": "Instagram", "url": "https://www.instagram.com/"},
+        {"name": "ChatGPT", "url": "https://api.openai.com/v1/models"},
+    ],
+    "site_timeout": 10,
 }
+
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 
 def now_iso():
@@ -155,6 +164,31 @@ def curl_via(port, url, timeout):
     return False, None, err[:120]
 
 
+def site_via(port, site, timeout):
+    """Открывается ли сайт через подключение. 2xx/3xx, а также 401/404/405/429 — сайт ответил;
+    403/451 — сайт отказал (гео-блок, например «недоступно в вашей стране»)."""
+    cmd = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code} %{time_total}", "--max-time", str(timeout),
+           "-A", UA, "--noproxy", "", "-x", f"socks5h://127.0.0.1:{port}", site["url"]]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    out = p.stdout.strip().split()
+    code = int(out[0]) if out and out[0].isdigit() else 0
+    ms = int(float(out[1]) * 1000) if len(out) > 1 else None
+    r = {"name": site["name"], "code": code, "ms": None, "ok": False, "error": ""}
+    if p.returncode == 0 and (code < 400 or code in (401, 404, 405, 429)) and code != 0:
+        r.update(ok=True, ms=ms)
+    elif code in (403, 451):
+        r["error"] = f"сайт отказал (HTTP {code}) — похоже на гео-блок"
+    elif p.returncode == 28:
+        r["error"] = "таймаут"
+    elif p.returncode in (7, 52, 56, 97):
+        r["error"] = "сайт недоступен через это подключение"
+    elif code:
+        r["error"] = f"HTTP {code}"
+    else:
+        r["error"] = (p.stderr.strip().splitlines() or ["нет ответа"])[-1][:100]
+    return r
+
+
 def check_one(e, port, cfg):
     tcp_ok, tcp_ms = tcp_check(e["address"], e["port"])
     ok, ms, err = curl_via(port, cfg["test_url"], cfg["timeout"])
@@ -164,14 +198,21 @@ def check_one(e, port, cfg):
         err += " (порт доступен — похоже на блокировку протокола/SNI или ошибку настройки)"
     elif not ok and not tcp_ok:
         err += " (порт недоступен из этой сети)"
-    return {"ok": ok, "ms": ms, "tcp_ok": tcp_ok, "tcp_ms": tcp_ms, "error": "" if ok else err}
+    sites = []
+    if ok:  # сайты проверяем только через рабочее подключение
+        for s in cfg.get("sites") or []:
+            r = site_via(port, s, cfg["site_timeout"])
+            if not r["ok"] and not r["error"].startswith("сайт отказал"):
+                r = site_via(port, s, cfg["site_timeout"])  # повтор при сетевой ошибке
+            sites.append(r)
+    return {"ok": ok, "ms": ms, "tcp_ok": tcp_ok, "tcp_ms": tcp_ms, "error": "" if ok else err, "sites": sites}
 
 
 def main():
     cfg = dict(DEFAULTS)
     with open(CONFIG, encoding="utf-8") as f:
         cfg.update(json.load(f))
-    result = {"version": 1, "checked_at": now_iso(), "server": socket.gethostname(), "test_url": cfg["test_url"],
+    result = {"version": 2, "sites": [s["name"] for s in cfg.get("sites") or []], "checked_at": now_iso(), "server": socket.gethostname(), "test_url": cfg["test_url"],
               "results": [], "error": ""}
     try:
         links = fetch_subscription(cfg["sub_url"])
@@ -225,7 +266,7 @@ def main():
         os.unlink(conf_path)
 
     for i, e in enumerate(check):
-        r = res.get(i, {"ok": False, "ms": None, "tcp_ok": None, "tcp_ms": None, "error": result["error"] or "не проверено"})
+        r = res.get(i, {"ok": False, "ms": None, "tcp_ok": None, "tcp_ms": None, "error": result["error"] or "не проверено", "sites": []})
         result["results"].append(dict({k: e.get(k) for k in ("name", "protocol", "address", "port", "network", "security")}, **r))
     for e in entries:
         if e.get("unsupported"):

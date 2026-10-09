@@ -461,6 +461,18 @@ public partial class App : Application
             now.Add(key);
             Track(key, r.Name, r.Ok == false, seed, $"«{r.Name}» не работает из РФ: {r.Error}", $"«{r.Name}» снова работает из РФ");
         }
+        // сайты: одна тревога на сайт, если он не открывается хотя бы через одно рабочее подключение
+        foreach (var g in rep.Results.Where(r => r.Ok == true).SelectMany(r => r.Sites.Select(s => (conn: r.Name, s)))
+                     .GroupBy(x => x.s.Name))
+        {
+            var key = $"site:{g.Key}|vpnsite";
+            now.Add(key);
+            var bad = g.Where(x => !x.s.Ok).ToList();
+            var all = bad.Count == g.Count();
+            Track(key, g.Key, bad.Count > 0, seed,
+                $"{g.Key} не открывается через VPN из РФ ({(all ? "ни через одно подключение" : string.Join(", ", bad.Select(x => x.conn)))}): {bad.FirstOrDefault().s?.Error}",
+                $"{g.Key} снова открывается через VPN из РФ");
+        }
         foreach (var gone in _vpnKeys.Where(k => !now.Contains(k)).ToList()) Track(gone, gone, false, false, "", "");
         _vpnKeys.Clear();
         foreach (var k in now) _vpnKeys.Add(k);
@@ -488,18 +500,26 @@ public partial class App : Application
         return false;
     }
 
+    static string SitesShort(VpnCheck r) =>
+        r.Sites.Count == 0 ? "" : r.Sites.All(s => s.Ok) ? $" · сайты {r.Sites.Count}/{r.Sites.Count}"
+        : " · не открываются: " + string.Join(", ", r.Sites.Where(s => !s.Ok).Select(s => s.Name));
+
     static string VpnLine(VpnCheck r) =>
-        r.Ok == true ? $"✓ {r.Name} {r.Ms} мс" : r.Ok == false ? $"✗ {r.Name}" : $"— {r.Name}";
+        r.Ok == true ? $"✓ {r.Name} {r.Ms} мс{SitesShort(r)}" : r.Ok == false ? $"✗ {r.Name}" : $"— {r.Name}";
 
     static string VpnDetail(VpnCheck r) =>
-        r.Ok == true ? $"✓ {r.Name} — {r.Ms} мс ({r.Network}/{r.Security})"
-        : r.Ok == false ? $"✗ {r.Name} — {r.Error}"
-        : $"— {r.Name} — {r.Error}";
+        (r.Ok == true ? $"✓ {r.Name} — {r.Ms} мс ({r.Network}/{r.Security})"
+         : r.Ok == false ? $"✗ {r.Name} — {r.Error}"
+         : $"— {r.Name} — {r.Error}")
+        + string.Concat(r.Sites.Select(s => s.Ok ? $"\n     ✓ {s.Name} {s.Ms} мс" : $"\n     ✗ {s.Name} — {s.Error}"));
 
+    // ok — всё работает; warn — часть подключений или сайтов не работает; bad — не работает ни одно подключение
     static string Level(IEnumerable<VpnCheck> list)
     {
         var l = list.Where(r => r.Ok != null).ToList();
-        return l.Count == 0 ? "none" : l.All(r => r.Ok == true) ? "ok" : l.Any(r => r.Ok == true) ? "warn" : "bad";
+        if (l.Count == 0) return "none";
+        if (l.All(r => r.Ok == false)) return "bad";
+        return l.All(r => r.Ok == true && r.Sites.All(s => s.Ok)) ? "ok" : "warn";
     }
 
     (string text, string level, string tip) VpnForNode(NodeRow n)
@@ -537,7 +557,11 @@ public partial class App : Application
         sb.AppendLine($"🛡 VPN из РФ — сервер {_chk.Server}, проверено {Ago(_chk.CheckedAt)}");
         if (_chk.Error != "") sb.AppendLine("🔴 " + _chk.Error);
         foreach (var r in _chk.Results)
+        {
             sb.AppendLine(r.Ok == true ? $"✅ {r.Name} — {r.Ms} мс" : r.Ok == false ? $"🔴 {r.Name} — {r.Error}" : $"⚪ {r.Name} — {r.Error}");
+            if (r.Sites.Count > 0)
+                sb.AppendLine("     " + string.Join(" · ", r.Sites.Select(s => s.Ok ? $"✓ {s.Name}" : $"✗ {s.Name} ({s.Error})")));
+        }
         return sb.ToString().TrimEnd();
     }
 

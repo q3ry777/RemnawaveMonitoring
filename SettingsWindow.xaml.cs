@@ -48,6 +48,7 @@ public partial class SettingsWindow : Window
         ChkEnabled.IsChecked = s.CheckerEnabled;
         ChkUser.Text = s.CheckerTestUser;
         ChkInterval.Text = s.CheckerIntervalMin.ToString();
+        ChkSites.Text = s.CheckerSites.Replace("\n", "\r\n");
         ChkHost.Text = _chk.Host;
         ChkPort.Text = _chk.Port.ToString();
         ChkSshUser.Text = _chk.User;
@@ -268,7 +269,7 @@ public partial class SettingsWindow : Window
         ChkInterval.Text = interval.ToString();
         try
         {
-            Clipboard.SetText(Checker.SetupCommand(_chk.User, _chk.Password, sub, interval));
+            Clipboard.SetText(Checker.SetupCommand(_chk.User, _chk.Password, sub, interval, ChkSites.Text.Replace("\r\n", "\n")));
             ChkResultText("Команда скопирована. Вставьте её в консоль сервера в РФ под root и дождитесь «RW-CHECKER: готово» (около минуты), затем нажмите «проверить подключение».", "Green");
         }
         catch (Exception ex) { ChkResultText("Не удалось скопировать: " + ex.Message, "Red"); }
@@ -289,8 +290,12 @@ public partial class SettingsWindow : Window
             var l = rep.Results.Where(r => r.Ok != null).ToList();
             int ok = l.Count(r => r.Ok == true);
             var bad = l.Where(r => r.Ok == false).Select(r => r.Name).ToList();
-            ChkResultText($"✓ подключено · сервер {rep.Server}, проверка от {rep.CheckedAt.ToLocalTime():dd.MM HH:mm}: работают {ok} из {l.Count}"
-                          + (bad.Count > 0 ? " · не работают: " + string.Join(", ", bad) : ""), bad.Count == 0 ? "Green" : "Amber");
+            var siteBad = l.SelectMany(r => r.Sites.Where(s => !s.Ok).Select(s => s.Name)).Distinct().ToList();
+            var text = $"✓ подключено · сервер {rep.Server}, проверка от {rep.CheckedAt.ToLocalTime():dd.MM HH:mm}: работают {ok} из {l.Count}"
+                       + (bad.Count > 0 ? " · не работают: " + string.Join(", ", bad) : "")
+                       + (siteBad.Count > 0 ? " · не открываются: " + string.Join(", ", siteBad) : "");
+            if (rep.Version < 2) text += ". На сервере старая версия чекера без проверки сайтов — выполните команду установки ещё раз.";
+            ChkResultText(text, bad.Count == 0 && siteBad.Count == 0 && rep.Version >= 2 ? "Green" : "Amber");
         }
         catch (Exception ex) { ChkResultText("✗ " + ex.Message, "Red"); }
     }
@@ -315,6 +320,7 @@ public partial class SettingsWindow : Window
         _s.CheckerEnabled = ChkEnabled.IsChecked == true;
         _s.CheckerTestUser = ChkUser.Text.Trim();
         _s.CheckerIntervalMin = int.TryParse(ChkInterval.Text.Trim(), out var ci) && ci is >= 2 and <= 60 ? ci : 5;
+        _s.CheckerSites = ChkSites.Text.Replace("\r\n", "\n").Trim();
         _s.MetricsUrl = MetricsUrlBox.Text.Trim();
         _s.MetricsUser = MetricsUserBox.Text.Trim();
         _s.MetricsPass = MetricsPassBox.Password;
