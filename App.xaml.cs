@@ -857,7 +857,13 @@ public partial class App : Application
         if (online.Count == 0) return $"👥 Сейчас никого онлайн (всего пользователей: {s.Users.Count})";
         var sb = new StringBuilder();
         sb.AppendLine($"👥 Онлайн: {online.Count} из {s.Users.Count}");
-        foreach (var u in online) sb.AppendLine($"• {u.Username} — {Flag(u.LastNodeCountry)}{u.LastNode}");
+        foreach (var u in online)
+        {
+            sb.AppendLine($"• {u.Username} — {Flag(u.LastNodeCountry)}{u.LastNode}");
+            // все IP пользователя: адрес, нода, когда виден
+            if (u.IpTip != "")
+                foreach (var line in u.IpTip.Split('\n')) sb.AppendLine("     🌐 " + line);
+        }
         return sb.ToString().TrimEnd();
     }
 
