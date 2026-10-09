@@ -43,6 +43,14 @@ public partial class MainWindow : Window
 
     public Action? InstallUpdateRequested;
     public Action? OpenJournalRequested;
+    public Action? MutesChanged;
+
+    void MuteChanged(string status)
+    {
+        _s.Save();
+        SetStatus(status);
+        MutesChanged?.Invoke();
+    }
 
     // Плашка «VPN из РФ N/M»: text == null — скрыть
     public void SetVpn(string? text, string level, string tip)
@@ -235,10 +243,36 @@ public partial class MainWindow : Window
                         if (n.Address == "") SetStatus("у ноды нет адреса");
                         else CopyText(n.Address, "адрес ноды");
                     });
+                    // уведомления по ноде: щелчок включает или выключает
+                    var scope = "node:" + n.Name;
+                    var allOn = Settings.NodeMuteCats.All(c => !_s.IsMuted(scope, c.cat));
+                    Add(allOn ? "🔕 отключить все уведомления по ноде" : "🔔 включить все уведомления по ноде", () =>
+                    {
+                        foreach (var c in Settings.NodeMuteCats)
+                            if (_s.IsMuted(scope, c.cat) == allOn) _s.ToggleMute(scope, c.cat);
+                        MuteChanged(allOn ? $"уведомления по {n.Name} отключены" : $"уведомления по {n.Name} включены");
+                    });
+                    foreach (var c in Settings.NodeMuteCats)
+                    {
+                        var muted = _s.IsMuted(scope, c.cat);
+                        var cat = c.cat;
+                        var label = c.label;
+                        Add((muted ? "     🔕 " : "     🔔 ") + label + (muted ? " — выкл" : ""), () =>
+                        {
+                            _s.ToggleMute(scope, cat);
+                            MuteChanged($"{n.Name}: {label} — уведомления {(muted ? "включены" : "отключены")}");
+                        });
+                    }
                     break;
                 case ServiceRow sv:
                     Add("копировать адрес", () => CopyText(sv.Url, sv.Url));
                     Add("открыть в браузере", () => OpenUrl(sv.Url));
+                    var sm = _s.IsMuted("site:" + sv.Url, "site");
+                    Add(sm ? "🔔 включить уведомления по сайту" : "🔕 отключить уведомления по сайту", () =>
+                    {
+                        _s.ToggleMute("site:" + sv.Url, "site");
+                        MuteChanged($"{sv.Name}: уведомления {(sm ? "включены" : "отключены")}");
+                    });
                     break;
             }
             if (row is not ServiceRow) Add("открыть панель в браузере", OpenPanel);

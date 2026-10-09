@@ -141,6 +141,26 @@ public class Settings
 
     public List<SshServer> SshServers { get; set; } = new();
 
+    // Отключённые уведомления: «node:<имя ноды>|<вид>» и «site:<адрес сайта>|site»
+    public List<string> Muted { get; set; } = new();
+
+    public static readonly (string cat, string label, string shortLabel)[] NodeMuteCats =
+    {
+        ("node", "состояние ноды (не в сети, Xray)", "состояние"),
+        ("reach", "доступность с этого ПК", "с ПК"),
+        ("ru", "доступность из РФ (check-host)", "из РФ"),
+        ("vpn", "VPN из РФ (xray-чекер)", "VPN"),
+        ("bill", "оплата сервера", "оплата"),
+    };
+
+    public bool IsMuted(string scope, string cat) => Muted.Contains(scope + "|" + cat);
+
+    public void ToggleMute(string scope, string cat)
+    {
+        var k = scope + "|" + cat;
+        if (!Muted.Remove(k)) Muted.Add(k);
+    }
+
     // Xray-чекер на сервере в РФ
     public bool CheckerEnabled { get; set; }
     public string CheckerTestUser { get; set; } = "";
@@ -218,7 +238,7 @@ public record NodeRow(
     string PingText = "", string PingLevel = "", string BillingText = "", string BillingLevel = "",
     string RuText = "", string RuLevel = "", string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
     double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "",
-    string SrvCpuNote = "", string VpnText = "", string VpnLevel = "", string VpnTip = "")
+    string SrvCpuNote = "", string VpnText = "", string VpnLevel = "", string VpnTip = "", string MutedText = "")
 {
     // Нагрузка сервера: CPU и диск — только по SSH; память — по SSH, а без него — из панели
     static string Lvl(double v, double warn, double crit) => v < 0 ? "none" : v >= crit ? "crit" : v >= warn ? "warn" : "ok";

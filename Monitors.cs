@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 
 namespace RemnawaveMonitor;
 
-public record ServiceRow(string Name, string Url, string StatusText, string Level, string Time, string Cert, string CertLevel);
+public record ServiceRow(string Name, string Url, string StatusText, string Level, string Time, string Cert, string CertLevel, string Muted = "");
 
 // Доступность ноды с ЭТОГО компьютера: ICMP-пинг и TCP-порт
 public static class NodeProbe

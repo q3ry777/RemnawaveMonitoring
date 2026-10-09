@@ -108,6 +108,7 @@ public partial class App : Application
         _win = new MainWindow(_s, OpenSettings, () => { _ = Refresh(true); _ = RefreshServices(); });
         _win.InstallUpdateRequested = () => _ = InstallUpdate();
         _win.OpenJournalRequested = OpenJournal;
+        _win.MutesChanged = () => { ReapplyExtras(); RefreshServicesView(); };
 
         _tg.Configure(_s);
         _tg.Handler = HandleTg;
@@ -273,7 +274,7 @@ public partial class App : Application
             _svcRows = rows;
             _svcOk = rows.Count(r => r.Level != "bad");
             _svcTotal = rows.Count;
-            _win.UpdateServices(rows);
+            RefreshServicesView();
             if (_prev != null) UpdateTray(_prev);
         }
         catch { }
@@ -361,6 +362,7 @@ public partial class App : Application
                 SrvNote = sshErr != "" ? "ssh: " + sshErr : "",
                 SrvCpuNote = st == null ? "" : CpuNote(st),
                 VpnText = vpn.text, VpnLevel = vpn.level, VpnTip = vpn.tip,
+                MutedText = MutedLabel(n.Name),
             };
         }).ToList();
         return s with { Nodes = nodes };
@@ -710,6 +712,7 @@ public partial class App : Application
     {
         int cur = _strikes.GetValueOrDefault(key);
         string severity = key.EndsWith("|cert") || key.EndsWith("|bill") ? "warn" : "bad";
+        bool muted = IsMutedKey(key);   // отключено пользователем: в журнал пишем, но без всплывающих, Telegram и красной иконки
         if (failing)
         {
             int next;
@@ -723,8 +726,8 @@ public partial class App : Application
                 next = cur + 1;
                 if (next == 2)
                 {
-                    _log.Open(key, subject, alarm, severity, unread: true);
-                    Balloon(alarm, Forms.ToolTipIcon.Warning, incident: true, tgKind: TgKind(key), tgText: "🔴 " + alarm);
+                    _log.Open(key, subject, alarm + (muted ? " (уведомления отключены)" : ""), severity, unread: !muted);
+                    if (!muted) Balloon(alarm, Forms.ToolTipIcon.Warning, incident: true, tgKind: TgKind(key), tgText: "🔴 " + alarm);
                 }
             }
             _strikes[key] = next;
@@ -734,7 +737,7 @@ public partial class App : Application
             if (cur >= 2)
             {
                 var downtime = _log.Resolve(key);
-                if (recovered != "")
+                if (recovered != "" && !muted)
                     Balloon(recovered, Forms.ToolTipIcon.Info, tgKind: TgKind(key),
                         tgText: "🟢 " + recovered + (downtime is TimeSpan d ? $" (простой {IncidentLog.Dur(d)})" : ""));
             }
@@ -978,6 +981,39 @@ public partial class App : Application
         var rows = _log.Rows().Where(r => r.Active).ToList();
         if (rows.Count == 0) return "✅ Активных проблем нет";
         return string.Join("\n", rows.Select(r => $"{(r.Level == "warn" ? "🟡" : "🔴")} {r.Subject}: {r.Text} ({r.Status})"));
+    }
+
+    void RefreshServicesView() =>
+        _win.UpdateServices(_svcRows.Select(r => r with { Muted = _s.IsMuted("site:" + r.Url, "site") ? "🔕 уведомления выкл" : "" }).ToList());
+
+    // ---- отключённые уведомления ----
+    bool IsMutedKey(string key)
+    {
+        int bar = key.LastIndexOf('|');
+        if (bar < 0) return false;
+        var head = key[..bar];
+        var kind = key[(bar + 1)..];
+        switch (kind)
+        {
+            case "conn": case "xray": return _s.IsMuted("node:" + head, "node");
+            case "reach": return _s.IsMuted("node:" + head, "reach");
+            case "ru": return _s.IsMuted("node:" + head, "ru");
+            case "bill": return _s.IsMuted("node:" + head, "bill");
+            case "down": case "cert": return _s.IsMuted("site:" + head, "site");
+            case "vpn":
+                // подключение из xray-чекера отключено, если отключён VPN у ноды, к которой оно относится
+                var name = head.StartsWith("vpn:") ? head[4..] : head;
+                var r = _chk?.Results.FirstOrDefault(x => x.Name == name);
+                return r != null && _prev != null && _prev.Nodes.Any(n => SameNode(r, n) && _s.IsMuted("node:" + n.Name, "vpn"));
+            default: return false;
+        }
+    }
+
+    string MutedLabel(string nodeName)
+    {
+        var off = Settings.NodeMuteCats.Where(c => _s.IsMuted("node:" + nodeName, c.cat)).ToList();
+        if (off.Count == 0) return "";
+        return off.Count == Settings.NodeMuteCats.Length ? "🔕 уведомления выкл" : "🔕 " + string.Join(", ", off.Select(c => c.shortLabel));
     }
 
     // ---- журнал событий и цвет иконки ----

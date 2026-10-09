@@ -247,6 +247,8 @@
                                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                                     <Image Style="{StaticResource FlagImg}" Height="15" Source="{Binding Country, Converter={StaticResource Flag}}"/>
                                                     <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="14"/>
+                                                    <TextBlock Text="{Binding MutedText}" FontSize="11" Foreground="{DynamicResource Dim}" Margin="10,0,0,0"
+                                                               VerticalAlignment="Center" ToolTip="уведомления отключены (ПКМ по ноде — включить)"/>
                                                 </StackPanel>
                                                 <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12" VerticalAlignment="Center">
                                                     <TextBlock.Style>
@@ -437,7 +439,10 @@
                                                     </Style>
                                                 </Ellipse.Style>
                                             </Ellipse>
-                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Bold"/>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold"/>
+                                                <TextBlock Text="{Binding Muted}" FontSize="11" Foreground="{DynamicResource Dim}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                            </StackPanel>
                                             <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,0,12,0">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
