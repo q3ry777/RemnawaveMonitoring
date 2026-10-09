@@ -53,16 +53,7 @@ public partial class SettingsWindow : Window
         ChkInterval.Text = s.CheckerIntervalMin.ToString();
         ChkSites.Text = s.CheckerSites.Replace("\n", "\r\n");
         // подключения из последнего результата чекера + ранее снятые (их сейчас может не быть в подписке)
-        foreach (var name in checkerConns.Concat(s.CheckerExcluded).Distinct())
-        {
-            var cb = new CheckBox { Content = name, Tag = name, IsChecked = !s.CheckerExcluded.Contains(name),
-                                    Style = (Style)FindResource("Check"), Margin = new Thickness(0, 6, 0, 0) };
-            _connBoxes.Add(cb);
-            ChkConns.Children.Add(cb);
-        }
-        ChkConnsHint.Text = _connBoxes.Count == 0
-            ? "Список появится после первого результата чекера — откройте настройки позже."
-            : "Снимите галочку с подключений, которые проверять не нужно. Действует сразу, переустанавливать чекер не надо.";
+        FillConns(checkerConns.Concat(s.CheckerExcluded));
         ChkHost.Text = _chk.Host;
         ChkPort.Text = _chk.Port.ToString();
         ChkSshUser.Text = _chk.User;
@@ -233,6 +224,21 @@ public partial class SettingsWindow : Window
     }
 
     // ---- xray-чекер ----
+    // Галочки подключений: из последнего результата, ранее снятые и из «проверить подключение»
+    void FillConns(IEnumerable<string> names)
+    {
+        foreach (var name in names.Where(n => n != "").Distinct())
+        {
+            if (_connBoxes.Any(b => (string)b.Tag == name)) continue;
+            var cb = new CheckBox { Content = name, Tag = name, IsChecked = !_s.CheckerExcluded.Contains(name),
+                                    Style = (Style)FindResource("Check"), Margin = new Thickness(0, 6, 0, 0) };
+            _connBoxes.Add(cb);
+            ChkConns.Children.Add(cb);
+        }
+        ChkConnsHint.Text = _connBoxes.Count == 0
+            ? "Список появится после первой проверки — нажмите «проверить подключение» внизу."
+            : "Снимите галочку с подключений, которые проверять не нужно, и нажмите «сохранить». Переустанавливать чекер не надо.";
+    }
     string? SubOf(string name) =>
         _users.Where(u => u.name.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)).Select(u => u.sub).FirstOrDefault();
 
@@ -300,6 +306,7 @@ public partial class SettingsWindow : Window
             if (_chk.HostKey == "" && key != "") _chk.HostKey = key;
             ShowChkKey();
             if (rep == null) { ChkResultText("✓ подключено, но результата ещё нет — чекер не успел выполнить первую проверку.", "Amber"); return; }
+            FillConns(rep.Results.Select(r => r.Name));
             if (rep.Error != "") { ChkResultText("✓ подключено · чекер сообщает об ошибке: " + rep.Error, "Amber"); return; }
             var l = rep.Results.Where(r => r.Ok != null).ToList();
             int ok = l.Count(r => r.Ok == true);
