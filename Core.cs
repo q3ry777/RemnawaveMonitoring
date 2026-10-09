@@ -150,6 +150,7 @@ public class Settings
         ("reach", "доступность с этого ПК", "с ПК"),
         ("ru", "доступность из РФ (check-host)", "из РФ"),
         ("vpn", "VPN из РФ (xray-чекер)", "VPN"),
+        ("sites", "сайты через VPN (YouTube, ChatGPT и др.)", "сайты"),
         ("bill", "оплата сервера", "оплата"),
     };
 

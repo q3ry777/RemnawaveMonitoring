@@ -463,8 +463,9 @@ public partial class App : Application
             now.Add(key);
             Track(key, r.Name, r.Ok == false, seed, $"«{r.Name}» не работает из РФ: {r.Error}", $"«{r.Name}» снова работает из РФ");
         }
-        // сайты: одна тревога на сайт, если он не открывается хотя бы через одно рабочее подключение
-        foreach (var g in rep.Results.Where(r => r.Ok == true).SelectMany(r => r.Sites.Select(s => (conn: r.Name, s)))
+        // сайты: одна тревога на сайт, если он не открывается хотя бы через одно рабочее подключение.
+        // Подключения нод, у которых «сайты через VPN» отключены, в тревоге не участвуют.
+        foreach (var g in rep.Results.Where(r => r.Ok == true && !SitesMuted(r)).SelectMany(r => r.Sites.Select(s => (conn: r.Name, s)))
                      .GroupBy(x => x.s.Name))
         {
             var key = $"site:{g.Key}|vpnsite";
@@ -1008,6 +1009,9 @@ public partial class App : Application
             default: return false;
         }
     }
+
+    bool SitesMuted(VpnCheck r) =>
+        _prev != null && _prev.Nodes.Any(n => SameNode(r, n) && _s.IsMuted("node:" + n.Name, "sites"));
 
     string MutedLabel(string nodeName)
     {
