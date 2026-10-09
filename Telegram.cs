@@ -14,7 +14,7 @@ public class TelegramService
 {
     HttpClient _http = CreateClient("");
     string _token = "", _chat = "", _sig = "";
-    bool _enabled, _primed, _busy, _commandsRegistered, _awaitUser;
+    bool _enabled, _primed, _busy, _commandsRegistered;
     long _offset;
     readonly Queue<(string text, DateTime at)> _queue = new();
 
@@ -24,17 +24,15 @@ public class TelegramService
     static readonly (string cmd, string desc)[] Commands =
     {
         ("status", "сводка"), ("nodes", "подробности по нодам"), ("users", "кто сейчас онлайн"),
-        ("problems", "активные проблемы"), ("services", "сайты и сертификаты"), ("expiring", "что скоро истекает"),
-        ("top", "топ-10 по трафику"), ("user", "карточка пользователя"), ("billing", "оплата серверов"),
-        ("uptime", "аптайм за 7 и 30 дней"), ("version", "версии панели, нод и программы"), ("vpn", "проверка VPN из РФ"), ("help", "список команд"),
+        ("problems", "активные проблемы"), ("services", "сайты и сертификаты"), ("vpn", "проверка VPN из РФ"),
+        ("version", "версии панели, нод и программы"), ("help", "список команд"),
     };
 
     static readonly (string text, string cmd)[] Buttons =
     {
         ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
-        ("⚠️ Проблемы", "/problems"), ("🌐 Сайты", "/services"), ("⏳ Истекает", "/expiring"),
-        ("📈 Топ", "/top"), ("💳 Оплата", "/billing"), ("🕒 Аптайм", "/uptime"),
-        ("👤 Пользователь", "/user"), ("ℹ️ Версии", "/version"), ("🛡 VPN из РФ", "/vpn"),
+        ("⚠️ Проблемы", "/problems"), ("🌐 Сайты", "/services"), ("🛡 VPN из РФ", "/vpn"),
+        ("ℹ️ Версии", "/version"),
     };
 
     static string Norm(string s) => s.Replace("\uFE0F", "").Trim();
@@ -45,9 +43,8 @@ public class TelegramService
         keyboard = new[]
         {
             new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" },
-            new[] { "⚠️ Проблемы", "🌐 Сайты", "⏳ Истекает" },
-            new[] { "📈 Топ", "💳 Оплата", "🕒 Аптайм" },
-            new[] { "🛡 VPN из РФ", "👤 Пользователь", "ℹ️ Версии" },
+            new[] { "⚠️ Проблемы", "🌐 Сайты", "🛡 VPN из РФ" },
+            new[] { "ℹ️ Версии" },
         },
         is_persistent = true,
         resize_keyboard = true,
@@ -57,8 +54,7 @@ public class TelegramService
     const string Help =
         "Команды (или кнопки внизу):\n" +
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн\n/problems — активные проблемы\n" +
-        "/services — сайты и сертификаты\n/expiring — что скоро истекает\n/top — топ-10 по трафику\n" +
-        "/user имя — карточка пользователя\n/billing — оплата серверов\n/uptime — аптайм за 7 и 30 дней\n/version — версии\n/vpn — проверка VPN из РФ";
+        "/services — сайты и сертификаты\n/vpn — проверка VPN из РФ\n/version — версии";
 
     public static HttpClient CreateClient(string proxy)
     {
@@ -169,16 +165,13 @@ public class TelegramService
             {
                 var btn = Buttons.FirstOrDefault(b => Norm(b.text) == Norm(raw));
                 if (btn.cmd != null) cmd = btn.cmd;
-                else if (_awaitUser) { cmd = "/user"; arg = raw; }
                 else continue;
             }
 
             string? reply;
-            if (cmd is "/start" or "/help") { _awaitUser = false; reply = Help; }
-            else if (cmd == "/user" && arg == "") { _awaitUser = true; reply = "👤 Введите имя пользователя (или его часть)"; }
+            if (cmd is "/start" or "/help") reply = Help;
             else
             {
-                _awaitUser = false;
                 reply = Handler?.Invoke(cmd, arg) ?? (raw.StartsWith('/') ? "Не знаю такой команды.\n\n" + Help : null);
             }
             if (reply != null) Enqueue(reply);

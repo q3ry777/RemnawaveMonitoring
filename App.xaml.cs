@@ -732,13 +732,8 @@ public partial class App : Application
         "/problems" => BuildProblems(),
         "/nodes" => BuildNodes(),
         "/users" => BuildUsers(),
-        "/top" => BuildTop(),
-        "/expiring" => BuildExpiring(),
         "/services" => BuildServices(),
-        "/user" => BuildUser(arg),
-        "/billing" => BuildBilling(),
         "/version" => BuildVersion(),
-        "/uptime" => BuildUptime(),
         "/vpn" => BuildVpn(),
         _ => null,
     };
