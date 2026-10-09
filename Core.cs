@@ -229,7 +229,8 @@ public class Settings
 public record UserRow(
     string Username, string Status, string Traffic, string LastNode, string Online, bool IsOnline, string LastNodeCountry,
     double TrafficBytes, DateTimeOffset? LastSeen, bool HasLimit, double TrafficPct, string TrafficLevel,
-    string ExpireNote, string ExpireLevel, string SubscriptionUrl);
+    string ExpireNote, string ExpireLevel, string SubscriptionUrl,
+    string UserId = "", string UserUuid = "", string Ip = "", string IpTip = "");
 
 public record NodeRow(
     string Name, string Country, string Status, string Xray, string Cpu,
@@ -240,7 +241,7 @@ public record NodeRow(
     string PingText = "", string PingLevel = "", string BillingText = "", string BillingLevel = "",
     string RuText = "", string RuLevel = "", string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
     double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "",
-    string SrvCpuNote = "", string VpnText = "", string VpnLevel = "", string VpnTip = "", string MutedText = "")
+    string SrvCpuNote = "", string VpnText = "", string VpnLevel = "", string VpnTip = "", string MutedText = "", string NodeUuid = "")
 {
     // Нагрузка сервера: CPU и диск — только по SSH; память — по SSH, а без него — из панели
     static string Lvl(double v, double warn, double crit) => v < 0 ? "none" : v >= crit ? "crit" : v >= warn ? "warn" : "ok";
@@ -266,6 +267,62 @@ public record Snapshot(List<UserRow> Users, List<NodeRow> Nodes, DateTime At);
 public class Api
 {
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
+
+    // IP активных подключений пользователей на ноде (панель 3.x: /api/connections, 2.x: /api/ip-control).
+    // Панель опрашивает ноду асинхронно: сначала задание, потом результат. -> (id пользователя, IP, когда виден)
+    public async Task<List<(string user, string ip, DateTimeOffset seen)>> FetchNodeIpsAsync(Settings s, string nodeUuid)
+    {
+        string jobJson;
+        string resultPath;
+        try
+        {
+            jobJson = await SendAsync(s, HttpMethod.Post, $"/api/connections/by-node/{nodeUuid}");
+            resultPath = "/api/connections/by-node/";
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            jobJson = await SendAsync(s, HttpMethod.Post, $"/api/ip-control/fetch-users-ips/{nodeUuid}");
+            resultPath = "/api/ip-control/fetch-users-ips/result/";
+        }
+        string jobId;
+        using (var jd = JsonDocument.Parse(jobJson)) jobId = J.S(jd.RootElement, "response", "jobId");
+        if (jobId == "") throw new Exception("панель не вернула jobId");
+
+        for (int i = 0; i < 12; i++)
+        {
+            await Task.Delay(1500);
+            using var d = JsonDocument.Parse(await SendAsync(s, HttpMethod.Get, resultPath + jobId));
+            var r = J.P(d.RootElement, "response");
+            if (r is not JsonElement resp) break;
+            if (J.P(resp, "isFailed") is { ValueKind: JsonValueKind.True }) throw new Exception("нода не ответила на запрос подключений");
+            if (J.P(resp, "isCompleted") is not { ValueKind: JsonValueKind.True }) continue;
+            var list = new List<(string, string, DateTimeOffset)>();
+            if (J.P(resp, "result", "users") is { ValueKind: JsonValueKind.Array } users)
+                foreach (var u in users.EnumerateArray())
+                {
+                    var id = J.S(u, "userId");
+                    if (u.TryGetProperty("ips", out var ips) && ips.ValueKind == JsonValueKind.Array)
+                        foreach (var ip in ips.EnumerateArray())
+                        {
+                            DateTimeOffset.TryParse(J.S(ip, "lastSeen"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var seen);
+                            list.Add((id, J.S(ip, "ip"), seen));
+                        }
+                }
+            return list;
+        }
+        throw new Exception("панель не дождалась ответа ноды");
+    }
+
+    async Task<string> SendAsync(Settings s, HttpMethod method, string path)
+    {
+        using var req = new HttpRequestMessage(method, s.BaseUrl.TrimEnd('/') + path);
+        if (!string.IsNullOrEmpty(s.ApiToken))
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", s.ApiToken);
+        if (method == HttpMethod.Post) req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+        using var res = await _http.SendAsync(req);
+        res.EnsureSuccessStatusCode();
+        return await res.Content.ReadAsStringAsync();
+    }
 
     async Task<string> GetAsync(Settings s, string path, int attempts = 3)
     {
@@ -510,7 +567,7 @@ public static class SnapshotBuilder
                 rx > 0 || tx > 0 ? $"↓ {J.Compact(rx)}/с" : "",
                 rx > 0 || tx > 0 ? $"↑ {J.Compact(tx)}/с" : "",
                 trafficText, hasLimit, tPct, tLevel,
-                (int)J.N(n, "usersOnline"), connected, xrayOk, J.S(n, "address"),
+                (int)J.N(n, "usersOnline"), connected, xrayOk, J.S(n, "address"), NodeUuid: uuid,
                 BillingText: billText, BillingLevel: billLevel,
                 NodeVersion: J.FindS(n, "nodeVersion"), XrayVersion: J.FindS(n, "xrayVersion")));
         }
@@ -554,7 +611,8 @@ public static class SnapshotBuilder
                 J.S(u, "username"), J.S(u, "status"),
                 hasLimit ? $"{J.Bytes(traffic)} / {J.Bytes(limit)}" : J.Bytes(traffic),
                 names.GetValueOrDefault(uuid, "—"), last, online, countries.GetValueOrDefault(uuid, ""),
-                traffic, seen, hasLimit, Math.Min(1, pct), level, note, noteLevel, J.S(u, "subscriptionUrl")));
+                traffic, seen, hasLimit, Math.Min(1, pct), level, note, noteLevel, J.S(u, "subscriptionUrl"),
+                UserId: J.S(u, "id"), UserUuid: J.S(u, "uuid")));
         }
         users = users.OrderByDescending(x => x.IsOnline).ThenBy(x => x.Username).ToList();
         return new Snapshot(users, nodes, DateTime.Now);

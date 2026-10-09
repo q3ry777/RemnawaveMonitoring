@@ -115,7 +115,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="22"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/>
-                                    <ColumnDefinition Width="170"/><ColumnDefinition Width="150"/><ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="170"/><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="HdrName" Grid.Column="1" Tag="name" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
                                 <TextBlock x:Name="HdrStatus" Grid.Column="2" Tag="status" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
@@ -131,7 +131,7 @@
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="22"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/>
-                                                <ColumnDefinition Width="170"/><ColumnDefinition Width="150"/><ColumnDefinition Width="110"/>
+                                                <ColumnDefinition Width="170"/><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/>
                                             </Grid.ColumnDefinitions>
                                             <Ellipse Width="8" Height="8" HorizontalAlignment="Left">
                                                 <Ellipse.Style>
@@ -196,9 +196,20 @@
                                                 <ProgressBar Style="{StaticResource Bar}" Value="{Binding TrafficPct, Mode=OneWay}" Margin="0,5,18,0"/>
                                             </StackPanel>
 
-                                            <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <Image Style="{StaticResource FlagImg}" Source="{Binding LastNodeCountry, Converter={StaticResource Flag}}"/>
-                                                <TextBlock Text="{Binding LastNode}" Foreground="{DynamicResource Dim}"/>
+                                            <StackPanel Grid.Column="4" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Image Style="{StaticResource FlagImg}" Source="{Binding LastNodeCountry, Converter={StaticResource Flag}}"/>
+                                                    <TextBlock Text="{Binding LastNode}" Foreground="{DynamicResource Dim}"/>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Ip}" ToolTip="{Binding IpTip}" FontSize="11" Margin="0,3,0,0" Foreground="{DynamicResource Dim}">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Ip}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                             </StackPanel>
 
                                             <TextBlock Grid.Column="5" Text="{Binding Online}" VerticalAlignment="Center">

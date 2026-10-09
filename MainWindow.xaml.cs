@@ -165,7 +165,7 @@ public partial class MainWindow : Window
         var map = new (TextBlock tb, string key, string label)[]
         {
             (HdrName, "name", "ПОЛЬЗОВАТЕЛЬ"), (HdrStatus, "status", "СТАТУС"), (HdrTraffic, "traffic", "ТРАФИК"),
-            (HdrNode, "node", "ПОСЛЕДНЯЯ НОДА"), (HdrOnline, "online", "ОНЛАЙН"),
+            (HdrNode, "node", "ПОСЛЕДНЯЯ НОДА · IP"), (HdrOnline, "online", "ОНЛАЙН"),
         };
         foreach (var (tb, key, label) in map)
             tb.Text = label + (_sortKey == key ? (_sortDesc ? " ▼" : " ▲") : "");
@@ -230,6 +230,7 @@ public partial class MainWindow : Window
             {
                 case UserRow u:
                     Add("копировать имя", () => CopyText(u.Username, u.Username));
+                    if (u.Ip != "") Add("копировать IP", () => CopyText(u.Ip.Split(' ')[0], "IP"));
                     Add("копировать ссылку подписки", () =>
                     {
                         if (u.SubscriptionUrl == "") SetStatus("у пользователя нет ссылки подписки");

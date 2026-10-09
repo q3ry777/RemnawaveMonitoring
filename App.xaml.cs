@@ -158,6 +158,10 @@ public partial class App : Application
         _sshTimer.Interval = TimeSpan.FromSeconds(60);
         _sshTimer.Start();
 
+        _ipTimer.Tick += async (_, _) => await RefreshIps();
+        _ipTimer.Interval = TimeSpan.FromMinutes(2);
+        _ipTimer.Start();
+
         _relTimer.Tick += async (_, _) => { await RefreshReleases(); await CheckAppUpdateAsync(); };
         _relTimer.Interval = TimeSpan.FromHours(6);
         _relTimer.Start();
@@ -232,6 +236,7 @@ public partial class App : Application
             _win.Update(snap);
             RefreshChip();
             if (firstSnap) _ = RefreshRu();
+            if (_ipFirst) { _ipFirst = false; _ = RefreshIps(); }
             _win.SetOffline(null);
         }
         catch (Exception ex)
@@ -368,7 +373,16 @@ public partial class App : Application
                 MutedText = MutedLabel(n.Name),
             };
         }).ToList();
-        return s with { Nodes = nodes };
+        var users = s.Users.Select(u =>
+        {
+            var key = u.UserId != "" ? u.UserId : u.UserUuid;
+            if (key == "" || !_ips.TryGetValue(key, out var list) || list.Count == 0) return u;
+            var distinct = list.OrderByDescending(x => x.seen).GroupBy(x => x.ip).Select(g => g.First()).ToList();
+            var text = distinct[0].ip + (distinct.Count > 1 ? $" +{distinct.Count - 1}" : "");
+            var tip = string.Join("\n", distinct.Select(x => $"{x.ip} — {x.node}, {x.seen.ToLocalTime():dd.MM HH:mm:ss}"));
+            return u with { Ip = text, IpTip = tip };
+        }).ToList();
+        return s with { Nodes = nodes, Users = users };
     }
 
     // Загрузка CPU, память и диск серверов нод по SSH (раз в минуту, все серверы параллельно)
@@ -408,6 +422,43 @@ public partial class App : Application
 
     // ---- xray-чекер (сервер в РФ): результат забирается по SSH раз в минуту ----
     CheckerReport? _chk, _chkRaw;
+
+    // ---- IP активных подключений пользователей (раз в 2 минуты, только ноды с людьми онлайн) ----
+    readonly DispatcherTimer _ipTimer = new();
+    Dictionary<string, List<(string ip, DateTimeOffset seen, string node)>> _ips = new();
+    bool _ipBusy, _ipFirst = true;
+    string _ipError = "";
+
+    async Task RefreshIps()
+    {
+        if (_ipBusy || _prev == null) return;
+        _ipBusy = true;
+        try
+        {
+            var nodes = _prev.Nodes.Where(n => n.Connected && n.UsersOnline > 0 && n.NodeUuid != "").ToList();
+            var tasks = nodes.Select(async n =>
+            {
+                try { return (n.Name, list: await _api.FetchNodeIpsAsync(_s, n.NodeUuid), err: ""); }
+                catch (Exception ex) { return (n.Name, list: new List<(string user, string ip, DateTimeOffset seen)>(), err: ex.Message); }
+            }).ToList();
+            var res = await Task.WhenAll(tasks);
+            var map = new Dictionary<string, List<(string ip, DateTimeOffset seen, string node)>>();
+            foreach (var (node, list, _) in res)
+                foreach (var (user, ip, seen) in list)
+                {
+                    if (!map.TryGetValue(user, out var l)) map[user] = l = new();
+                    l.Add((ip, seen, node));
+                }
+            _ips = map;
+            var err = res.Select(r => r.err).FirstOrDefault(e => e != "") ?? "";
+            if (err != "" && err != _ipError)
+                _win.SetStatus("IP пользователей: " + (err.Contains("403") ? "у API-токена нет прав на подключения (connections)" : err));
+            _ipError = err;
+            ReapplyExtras();
+        }
+        catch { }
+        finally { _ipBusy = false; }
+    }
 
     // Подключения, снятые с проверки в настройках, скрываются и не дают тревог
     CheckerReport? Filtered(CheckerReport? rep) =>
