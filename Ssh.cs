@@ -53,6 +53,13 @@ public static class SshStats
 
     static (ServerStats, string) Collect(SshServer srv)
     {
+        var (output, key) = Exec(srv, Script);
+        return (Parse(output), key);
+    }
+
+    // Подключение по паролю с проверкой ключа сервера и выполнение команды. -> (вывод, отпечаток ключа)
+    public static (string output, string key) Exec(SshServer srv, string command)
+    {
         string seenKey = "";
         bool mismatch = false;
 
@@ -78,11 +85,11 @@ public static class SshStats
         catch (SshOperationTimeoutException) { throw new Exception("таймаут подключения"); }
         catch (SocketException ex) { throw new Exception("нет соединения: " + ex.Message); }
 
-        using var cmd = client.CreateCommand(Script);
+        using var cmd = client.CreateCommand(command);
         cmd.CommandTimeout = TimeSpan.FromSeconds(15);
         var output = cmd.Execute();
         client.Disconnect();
-        return (Parse(output), seenKey);
+        return (output, seenKey);
     }
 
     static ServerStats Parse(string output)

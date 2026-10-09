@@ -89,6 +89,7 @@
                 <RadioButton GroupName="nav" Tag="PagePanel" Content="панель" Style="{StaticResource NavItem}" IsChecked="True" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageSsh" Content="серверы · SSH" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageChecks" Content="проверки нод" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageChecker" Content="xray-чекер" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageSites" Content="сайты" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageTg" Content="telegram" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageUpdates" Content="обновления" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
@@ -207,6 +208,57 @@
                               ToolTip="раз в 10 минут адрес и порт каждой ноды отправляются на check-host.net"/>
                     <TextBlock Text="ПОРТ ДЛЯ ПРОВЕРКИ (0 — только ping)" Style="{StaticResource Field}"/>
                     <TextBox x:Name="ProbePortBox" Style="{StaticResource Input}" Width="160" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== xray-чекер ===== -->
+            <ScrollViewer x:Name="PageChecker" Style="{StaticResource Page}">
+                <StackPanel Margin="30,24,30,20">
+                    <TextBlock Text="xray-чекер" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Style="{StaticResource PageDesc}"
+                               Text="Сервер в РФ по расписанию подключается к каждому вашему подключению через Xray — как настоящий клиент — и открывает через него сайт. Так видна блокировка протокола или SNI, которую не ловит проверка порта. Результат программа забирает по SSH, уведомления отправляет как обычно."/>
+                    <CheckBox x:Name="ChkEnabled" Style="{StaticResource Check}" Content="использовать xray-чекер"/>
+
+                    <TextBlock Text="ТЕСТОВЫЙ ПОЛЬЗОВАТЕЛЬ ПАНЕЛИ (его подписка используется для проверки)" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="ChkUser" Style="{StaticResource Input}" TextChanged="ChkUser_Changed"/>
+                    <TextBlock x:Name="ChkUserHint" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"/>
+
+                    <TextBlock Text="ПРОВЕРЯТЬ КАЖДЫЕ, МИН" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="ChkInterval" Style="{StaticResource Input}" Width="90" HorizontalAlignment="Left"/>
+
+                    <TextBlock Text="СЕРВЕР В РФ: АДРЕС И ПОРТ SSH" Style="{StaticResource Field}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="ChkHost" Style="{StaticResource Input}"/>
+                        <TextBox x:Name="ChkPort" Grid.Column="2" Style="{StaticResource Input}"/>
+                    </Grid>
+                    <TextBlock Text="ПОЛЬЗОВАТЕЛЬ ДЛЯ ЧТЕНИЯ РЕЗУЛЬТАТА (отдельный, не root)" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="ChkSshUser" Style="{StaticResource Input}"/>
+                    <TextBlock Text="ПАРОЛЬ (хранится зашифрованным)" Style="{StaticResource Field}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <PasswordBox x:Name="ChkPass" Style="{StaticResource InputPwd}"/>
+                        <Button Grid.Column="1" Content="сгенерировать" Style="{StaticResource Btn}" Click="ChkGen_Click"/>
+                    </Grid>
+                    <WrapPanel Margin="0,16,0,0">
+                        <Button Content="скопировать команду установки" Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Click="ChkCopy_Click"/>
+                        <Button Content="проверить подключение" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="ChkTest_Click"/>
+                    </WrapPanel>
+                    <TextBlock x:Name="ChkResult" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"/>
+                    <DockPanel Margin="0,14,0,0">
+                        <Button DockPanel.Dock="Right" Content="сбросить ключ" Style="{StaticResource Btn}" Click="ChkResetKey_Click"
+                                ToolTip="если сервер переустанавливали — ключ запомнится заново при следующем подключении"/>
+                        <TextBlock x:Name="ChkKey" FontSize="11" Foreground="{DynamicResource Dim}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    </DockPanel>
+                    <Border Margin="0,18,0,0" Padding="14,12" CornerRadius="8" BorderThickness="1"
+                            BorderBrush="{DynamicResource Line}" Background="{DynamicResource Panel}">
+                        <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Dim}" LineHeight="19">
+                            <Run Text="как подключить" FontWeight="Bold" Foreground="{DynamicResource Fg}"/><LineBreak/>
+                            <Run Text="1. В панели создайте пользователя для проверки (например, rw-checker) с доступом ко всем нодам и небольшим лимитом трафика. Впишите его имя выше."/><LineBreak/>
+                            <Run Text="2. Укажите адрес сервера в РФ, нажмите «сгенерировать», затем «скопировать команду установки» и выполните её на сервере под root. Дождитесь «RW-CHECKER: готово»."/><LineBreak/>
+                            <Run Text="3. Включите «использовать xray-чекер», нажмите «проверить подключение», затем «сохранить»."/>
+                        </TextBlock>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
 

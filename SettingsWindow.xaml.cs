@@ -16,7 +16,10 @@ public partial class SettingsWindow : Window
     readonly ToggleButton[] _hours = new ToggleButton[24];
     SshServer? _cur;
 
-    public SettingsWindow(Settings s, IEnumerable<(string name, string address)> nodes)
+    readonly List<(string name, string sub)> _users;
+    SshServer _chk;
+
+    public SettingsWindow(Settings s, IEnumerable<(string name, string address)> nodes, IEnumerable<(string name, string sub)> users)
     {
         InitializeComponent();
         SourceInitialized += (_, _) => WinChrome.Apply(this);
@@ -38,6 +41,19 @@ public partial class SettingsWindow : Window
         SrvList.ItemsSource = _servers;
         if (_servers.Count > 0) SrvList.SelectedIndex = 0;
         else { SrvEmpty.Visibility = Visibility.Visible; SrvBlock.Visibility = Visibility.Collapsed; }
+
+        // xray-чекер
+        _users = users.ToList();
+        _chk = s.Checker.Clone();
+        ChkEnabled.IsChecked = s.CheckerEnabled;
+        ChkUser.Text = s.CheckerTestUser;
+        ChkInterval.Text = s.CheckerIntervalMin.ToString();
+        ChkHost.Text = _chk.Host;
+        ChkPort.Text = _chk.Port.ToString();
+        ChkSshUser.Text = _chk.User;
+        ChkPass.Password = _chk.Password;
+        ShowChkKey();
+        ChkUser_Changed(this, null!);
 
         // проверки и сайты
         ProbeBox.IsChecked = s.ProbeEnabled;
@@ -85,7 +101,7 @@ public partial class SettingsWindow : Window
     void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton rb || rb.Tag is not string page) return;
-        foreach (var name in new[] { "PagePanel", "PageSsh", "PageChecks", "PageSites", "PageTg", "PageUpdates", "PageMetrics", "PageGeneral" })
+        foreach (var name in new[] { "PagePanel", "PageSsh", "PageChecks", "PageChecker", "PageSites", "PageTg", "PageUpdates", "PageMetrics", "PageGeneral" })
             if (FindName(name) is UIElement el)
                 el.Visibility = name == page ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -201,6 +217,90 @@ public partial class SettingsWindow : Window
         ShowKey();
     }
 
+    // ---- xray-чекер ----
+    string? SubOf(string name) =>
+        _users.Where(u => u.name.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)).Select(u => u.sub).FirstOrDefault();
+
+    void ChkUser_Changed(object sender, TextChangedEventArgs e)
+    {
+        var name = ChkUser.Text.Trim();
+        var sub = SubOf(name);
+        ChkUserHint.SetResourceReference(TextBlock.ForegroundProperty, sub == null && name != "" ? "Red" : "Dim");
+        ChkUserHint.Text = name == "" ? "Впишите имя пользователя, созданного для проверки."
+            : _users.Count == 0 ? "Список пользователей появится после первого ответа панели."
+            : sub == null ? "Пользователь не найден в панели."
+            : sub == "" ? "У пользователя нет ссылки подписки."
+            : "Подписка найдена: " + (sub.Length > 24 ? sub[..24] + "…" : sub);
+    }
+
+    void StoreChk()
+    {
+        _chk.Host = ChkHost.Text.Trim();
+        _chk.Port = int.TryParse(ChkPort.Text.Trim(), out var p) && p is > 0 and <= 65535 ? p : 22;
+        _chk.User = ChkSshUser.Text.Trim();
+        _chk.Password = ChkPass.Password;
+    }
+
+    void ShowChkKey() => ChkKey.Text = _chk.HostKey == "" ? "ключ сервера: запомнится при первом подключении" : "ключ сервера: SHA256:" + _chk.HostKey;
+
+    void ChkResultText(string text, string brush)
+    {
+        ChkResult.Text = text;
+        ChkResult.SetResourceReference(TextBlock.ForegroundProperty, brush);
+    }
+
+    void ChkGen_Click(object sender, RoutedEventArgs e)
+    {
+        ChkPass.Password = SshStats.NewPassword();
+        ChkResultText("Пароль создан. Теперь скопируйте команду установки — пароль уже в ней.", "Dim");
+    }
+
+    void ChkCopy_Click(object sender, RoutedEventArgs e)
+    {
+        var sub = SubOf(ChkUser.Text);
+        if (string.IsNullOrEmpty(sub)) { ChkResultText("Сначала укажите тестового пользователя панели — нужна его подписка.", "Red"); return; }
+        var u = ChkSshUser.Text.Trim();
+        if (u == "" || u == "root" || !Regex.IsMatch(u, "^[a-z_][a-z0-9_-]{0,31}$"))
+        { ChkResultText("Имя SSH-пользователя: латиница в нижнем регистре, цифры, «_» и «-», не root.", "Red"); return; }
+        if (ChkPass.Password == "") ChkPass.Password = SshStats.NewPassword();
+        StoreChk();
+        int interval = int.TryParse(ChkInterval.Text.Trim(), out var m) && m is >= 2 and <= 60 ? m : 5;
+        ChkInterval.Text = interval.ToString();
+        try
+        {
+            Clipboard.SetText(Checker.SetupCommand(_chk.User, _chk.Password, sub, interval));
+            ChkResultText("Команда скопирована. Вставьте её в консоль сервера в РФ под root и дождитесь «RW-CHECKER: готово» (около минуты), затем нажмите «проверить подключение».", "Green");
+        }
+        catch (Exception ex) { ChkResultText("Не удалось скопировать: " + ex.Message, "Red"); }
+    }
+
+    async void ChkTest_Click(object sender, RoutedEventArgs e)
+    {
+        StoreChk();
+        if (_chk.Host == "" || _chk.Password == "") { ChkResultText("Нужны адрес сервера и пароль.", "Red"); return; }
+        ChkResultText("подключаюсь…", "Dim");
+        try
+        {
+            var (rep, key) = await Checker.FetchAsync(_chk.Clone());
+            if (_chk.HostKey == "" && key != "") _chk.HostKey = key;
+            ShowChkKey();
+            if (rep == null) { ChkResultText("✓ подключено, но результата ещё нет — чекер не успел выполнить первую проверку.", "Amber"); return; }
+            if (rep.Error != "") { ChkResultText("✓ подключено · чекер сообщает об ошибке: " + rep.Error, "Amber"); return; }
+            var l = rep.Results.Where(r => r.Ok != null).ToList();
+            int ok = l.Count(r => r.Ok == true);
+            var bad = l.Where(r => r.Ok == false).Select(r => r.Name).ToList();
+            ChkResultText($"✓ подключено · сервер {rep.Server}, проверка от {rep.CheckedAt.ToLocalTime():dd.MM HH:mm}: работают {ok} из {l.Count}"
+                          + (bad.Count > 0 ? " · не работают: " + string.Join(", ", bad) : ""), bad.Count == 0 ? "Green" : "Amber");
+        }
+        catch (Exception ex) { ChkResultText("✗ " + ex.Message, "Red"); }
+    }
+
+    void ChkResetKey_Click(object sender, RoutedEventArgs e)
+    {
+        _chk.HostKey = "";
+        ShowChkKey();
+    }
+
     // ---- сохранение ----
     void Save_Click(object sender, RoutedEventArgs e)
     {
@@ -210,6 +310,11 @@ public partial class SettingsWindow : Window
         _s.IntervalSec = int.TryParse(Interval.Text, out var v) && v >= 5 ? v : 30;
         _s.OnlineWindowSec = int.TryParse(OnlineBox.Text, out var w) && w >= 30 ? w : 300;
         _s.SshServers = _servers.Select(x => x.Clone()).ToList();
+        StoreChk();
+        _s.Checker = _chk.Clone();
+        _s.CheckerEnabled = ChkEnabled.IsChecked == true;
+        _s.CheckerTestUser = ChkUser.Text.Trim();
+        _s.CheckerIntervalMin = int.TryParse(ChkInterval.Text.Trim(), out var ci) && ci is >= 2 and <= 60 ? ci : 5;
         _s.MetricsUrl = MetricsUrlBox.Text.Trim();
         _s.MetricsUser = MetricsUserBox.Text.Trim();
         _s.MetricsPass = MetricsPassBox.Password;

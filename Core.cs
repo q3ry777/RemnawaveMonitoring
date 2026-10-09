@@ -141,6 +141,12 @@ public class Settings
 
     public List<SshServer> SshServers { get; set; } = new();
 
+    // Xray-чекер на сервере в РФ
+    public bool CheckerEnabled { get; set; }
+    public string CheckerTestUser { get; set; } = "";
+    public int CheckerIntervalMin { get; set; } = 5;
+    public SshServer Checker { get; set; } = new() { Node = "xray-чекер", User = "rwcheck" };
+
     public string MetricsUrl { get; set; } = "";
     public string MetricsUser { get; set; } = "";
 
@@ -169,6 +175,8 @@ public class Settings
             s.UpdateToken = Secret.Unprotect(s.UpdateTokenEnc);
             s.TgToken = Secret.Unprotect(s.TgTokenEnc);
             foreach (var x in s.SshServers) x.Password = Secret.Unprotect(x.PasswordEnc);
+            s.Checker ??= new SshServer { Node = "xray-чекер", User = "rwcheck" };
+            s.Checker.Password = Secret.Unprotect(s.Checker.PasswordEnc);
             if (s.ApiToken == "" && !string.IsNullOrEmpty(s.Token))
             {
                 s.ApiToken = s.Token!;   // миграция со старой версии
@@ -188,6 +196,7 @@ public class Settings
         UpdateTokenEnc = Secret.Protect(UpdateToken);
         TgTokenEnc = Secret.Protect(TgToken);
         foreach (var x in SshServers) x.PasswordEnc = Secret.Protect(x.Password);
+        Checker.PasswordEnc = Secret.Protect(Checker.Password);
         Directory.CreateDirectory(Dir);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this));
     }
@@ -207,7 +216,7 @@ public record NodeRow(
     string PingText = "", string PingLevel = "", string BillingText = "", string BillingLevel = "",
     string RuText = "", string RuLevel = "", string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
     double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "",
-    string SrvCpuNote = "")
+    string SrvCpuNote = "", string VpnText = "", string VpnLevel = "", string VpnTip = "")
 {
     // Нагрузка сервера: CPU и диск — только по SSH; память — по SSH, а без него — из панели
     static string Lvl(double v, double warn, double crit) => v < 0 ? "none" : v >= crit ? "crit" : v >= warn ? "warn" : "ok";

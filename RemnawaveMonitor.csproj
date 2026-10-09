@@ -13,6 +13,7 @@
   <ItemGroup>
     <Resource Include="Fonts\*.ttf" />
     <Resource Include="Flags\*.png" />
+    <EmbeddedResource Include="server\rw-checker.py" LogicalName="rw-checker.py" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="SSH.NET" Version="2024.1.0" />
   </ItemGroup>

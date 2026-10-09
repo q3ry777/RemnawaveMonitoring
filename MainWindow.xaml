@@ -80,6 +80,10 @@
                         <TextBlock x:Name="OnlineText" Text="0 онлайн" Foreground="{DynamicResource Dim}" FontSize="12"/>
                         <Ellipse x:Name="NodesDot" Width="7" Height="7" Fill="{DynamicResource Dim}" Margin="22,0,8,0"/>
                         <TextBlock x:Name="NodesText" Text="ноды" Foreground="{DynamicResource Dim}" FontSize="12"/>
+                        <StackPanel x:Name="VpnChip" Orientation="Horizontal" Visibility="Collapsed" Background="Transparent">
+                            <Ellipse x:Name="VpnDot" Width="7" Height="7" Fill="{DynamicResource Dim}" Margin="22,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="VpnChipText" Foreground="{DynamicResource Dim}" FontSize="12" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </StackPanel>
                 </DockPanel>
 
@@ -359,6 +363,20 @@
                                                     </TextBlock.Style>
                                                 </TextBlock>
                                             </Grid>
+                                            <!-- строка VPN: проверка подключений из РФ (xray-чекер) -->
+                                            <TextBlock Text="{Binding VpnText}" ToolTip="{Binding VpnTip}" FontSize="12" Margin="22,8,0,0" TextTrimming="CharacterEllipsis">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Green}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding VpnText}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                            <DataTrigger Binding="{Binding VpnLevel}" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></DataTrigger>
+                                                            <DataTrigger Binding="{Binding VpnLevel}" Value="bad"><Setter Property="Foreground" Value="{DynamicResource Red}"/></DataTrigger>
+                                                            <DataTrigger Binding="{Binding VpnLevel}" Value="none"><Setter Property="Foreground" Value="{DynamicResource Dim}"/></DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <!-- строка 4: ошибка сбора статистики по SSH -->
                                             <TextBlock Text="{Binding SrvNote}" FontSize="12" Foreground="{DynamicResource Red}" Margin="22,8,0,0"
                                                        TextTrimming="CharacterEllipsis">

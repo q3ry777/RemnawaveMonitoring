@@ -44,6 +44,16 @@ public partial class MainWindow : Window
     public Action? InstallUpdateRequested;
     public Action? OpenJournalRequested;
 
+    // Плашка «VPN из РФ N/M»: text == null — скрыть
+    public void SetVpn(string? text, string level, string tip)
+    {
+        VpnChip.Visibility = text == null ? Visibility.Collapsed : Visibility.Visible;
+        if (text == null) return;
+        VpnChipText.Text = text;
+        VpnChip.ToolTip = tip;
+        VpnDot.SetResourceReference(Shape.FillProperty, level switch { "ok" => "Green", "warn" => "Amber", "bad" => "Red", _ => "Dim" });
+    }
+
     // Индикатор «не беспокоить»: null — скрыть
     public void SetDnd(string? text)
     {

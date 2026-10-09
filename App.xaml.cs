@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Net;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -152,7 +153,7 @@ public partial class App : Application
         _ruTimer.Interval = TimeSpan.FromMinutes(10);
         _ruTimer.Start();
 
-        _sshTimer.Tick += async (_, _) => await RefreshSsh();
+        _sshTimer.Tick += async (_, _) => { await RefreshSsh(); await RefreshChecker(); };
         _sshTimer.Interval = TimeSpan.FromSeconds(60);
         _sshTimer.Start();
 
@@ -179,6 +180,7 @@ public partial class App : Application
         _ = RefreshReleases();
         _ = CheckAppUpdateAsync();
         _ = RefreshSsh();
+        _ = RefreshChecker();
     }
 
     void ShowWin()
@@ -190,7 +192,8 @@ public partial class App : Application
     void OpenSettings()
     {
         var nodes = _prev?.Nodes.Select(n => (n.Name, n.Address)).ToList() ?? new List<(string, string)>();
-        var w = new SettingsWindow(_s, nodes);
+        var users = _prev?.Users.Select(u => (u.Username, u.SubscriptionUrl)).ToList() ?? new List<(string, string)>();
+        var w = new SettingsWindow(_s, nodes, users);
         if (w.ShowDialog() != true) return;
         _s.Save();
         _tg.Configure(_s);
@@ -200,6 +203,7 @@ public partial class App : Application
         _ = RefreshServices();
         _ = CheckAppUpdateAsync();
         _ = RefreshSsh();
+        _ = RefreshChecker();
     }
 
     async Task Refresh(bool manual = false)
@@ -345,6 +349,7 @@ public partial class App : Application
             if (n.NodeVersion != "") parts.Add(old ? $"node {n.NodeVersion} → {latest}" : $"node {n.NodeVersion}");
             if (n.XrayVersion != "") parts.Add($"xray {n.XrayVersion}");
             var ru = _ru.TryGetValue(n.Name, out var r) ? r : ("", "");
+            var vpn = VpnForNode(n);
             ServerStats? st = null;
             string sshErr = "";
             if (_srv.TryGetValue(n.Name, out var sr)) { st = sr.stats; sshErr = sr.error ?? ""; }
@@ -355,6 +360,7 @@ public partial class App : Application
                 SrvRamText = st?.RamText ?? "", SrvDiskText = st?.DiskText ?? "",
                 SrvNote = sshErr != "" ? "ssh: " + sshErr : "",
                 SrvCpuNote = st == null ? "" : CpuNote(st),
+                VpnText = vpn.text, VpnLevel = vpn.level, VpnTip = vpn.tip,
             };
         }).ToList();
         return s with { Nodes = nodes };
@@ -394,6 +400,146 @@ public partial class App : Application
     }
 
     record SshResult(SshServer Srv, ServerStats? Stats, string Key, string Error);
+
+    // ---- xray-чекер (сервер в РФ): результат забирается по SSH раз в минуту ----
+    CheckerReport? _chk;
+    string _chkError = "";
+    bool _chkBusy, _chkSeeded;
+    readonly HashSet<string> _vpnKeys = new();
+    readonly Dictionary<string, (IPAddress[] ips, DateTime at)> _dns = new();
+
+    bool CheckerOn => _s.CheckerEnabled && _s.Checker.Host != "" && _s.Checker.Password != "";
+
+    async Task RefreshChecker()
+    {
+        if (_chkBusy) return;
+        if (!CheckerOn)
+        {
+            _chk = null; _chkError = "";
+            ReapplyExtras(); UpdateVpnChip();
+            return;
+        }
+        _chkBusy = true;
+        try
+        {
+            var srv = _s.Checker;
+            var (rep, key) = await Checker.FetchAsync(srv.Clone());
+            if (srv.HostKey == "" && key != "") { srv.HostKey = key; _s.Save(); }
+            _chkError = "";
+            Track("checker|ssh", "xray-чекер", false, false, "", "Связь с xray-чекером восстановлена");
+            bool fresh = rep != null && rep.CheckedAt != _chk?.CheckedAt;
+            _chk = rep;
+            if (rep != null)
+            {
+                await ResolveHosts(rep.Results.Select(r => r.Address).Concat(_prev?.Nodes.Select(n => n.Address) ?? Enumerable.Empty<string>()));
+                if (fresh) TrackVpn(rep, seed: !_chkSeeded);
+                _chkSeeded = true;
+                var age = DateTime.UtcNow - rep.CheckedAt;
+                Track("checker|stale", "xray-чекер", age > TimeSpan.FromMinutes(Math.Max(15, _s.CheckerIntervalMin * 3)), false,
+                    $"Xray-чекер давно не обновлял результат (последний {Ago(rep.CheckedAt)})", "Xray-чекер снова присылает результаты");
+            }
+        }
+        catch (Exception ex)
+        {
+            _chkError = ex.Message;
+            Track("checker|ssh", "xray-чекер", true, false, $"Нет связи с xray-чекером: {ex.Message}", "Связь с xray-чекером восстановлена");
+        }
+        finally { _chkBusy = false; }
+        ReapplyExtras();
+        UpdateVpnChip();
+        SyncJournalUi();
+    }
+
+    // Тревога по каждому подключению — только на новом результате (иначе один и тот же отчёт считался бы несколько раз)
+    void TrackVpn(CheckerReport rep, bool seed)
+    {
+        Track("checker|error", "xray-чекер", rep.Error != "", seed, $"Xray-чекер: {rep.Error}", "Xray-чекер снова работает");
+        var now = new HashSet<string>();
+        foreach (var r in rep.Results.Where(r => r.Ok != null))
+        {
+            var key = $"vpn:{r.Name}|vpn";
+            now.Add(key);
+            Track(key, r.Name, r.Ok == false, seed, $"«{r.Name}» не работает из РФ: {r.Error}", $"«{r.Name}» снова работает из РФ");
+        }
+        foreach (var gone in _vpnKeys.Where(k => !now.Contains(k)).ToList()) Track(gone, gone, false, false, "", "");
+        _vpnKeys.Clear();
+        foreach (var k in now) _vpnKeys.Add(k);
+    }
+
+    async Task ResolveHosts(IEnumerable<string> hosts)
+    {
+        foreach (var h in hosts.Where(h => h != "").Distinct(StringComparer.OrdinalIgnoreCase).ToList())
+        {
+            if (_dns.TryGetValue(h.ToLowerInvariant(), out var c) && DateTime.Now - c.at < TimeSpan.FromMinutes(30)) continue;
+            IPAddress[] ips;
+            try { ips = IPAddress.TryParse(h, out var ip) ? new[] { ip } : await Dns.GetHostAddressesAsync(h); }
+            catch { ips = Array.Empty<IPAddress>(); }
+            _dns[h.ToLowerInvariant()] = (ips, DateTime.Now);
+        }
+    }
+
+    // Подключение относится к ноде, если адрес совпадает (в том числе по IP) или в названии подключения есть имя ноды
+    bool SameNode(VpnCheck r, NodeRow n)
+    {
+        if (r.Address.Equals(n.Address, StringComparison.OrdinalIgnoreCase) && r.Address != "") return true;
+        if (n.Name.Length > 2 && r.Name.Contains(n.Name, StringComparison.OrdinalIgnoreCase)) return true;
+        if (_dns.TryGetValue(r.Address.ToLowerInvariant(), out var a) && _dns.TryGetValue(n.Address.ToLowerInvariant(), out var b))
+            return a.ips.Any(x => b.ips.Contains(x));
+        return false;
+    }
+
+    static string VpnLine(VpnCheck r) =>
+        r.Ok == true ? $"✓ {r.Name} {r.Ms} мс" : r.Ok == false ? $"✗ {r.Name}" : $"— {r.Name}";
+
+    static string VpnDetail(VpnCheck r) =>
+        r.Ok == true ? $"✓ {r.Name} — {r.Ms} мс ({r.Network}/{r.Security})"
+        : r.Ok == false ? $"✗ {r.Name} — {r.Error}"
+        : $"— {r.Name} — {r.Error}";
+
+    static string Level(IEnumerable<VpnCheck> list)
+    {
+        var l = list.Where(r => r.Ok != null).ToList();
+        return l.Count == 0 ? "none" : l.All(r => r.Ok == true) ? "ok" : l.Any(r => r.Ok == true) ? "warn" : "bad";
+    }
+
+    (string text, string level, string tip) VpnForNode(NodeRow n)
+    {
+        if (!CheckerOn || _chk == null) return ("", "", "");
+        var list = _chk.Results.Where(r => SameNode(r, n)).ToList();
+        if (list.Count == 0) return ("", "", "");
+        var tip = string.Join("\n", list.Select(VpnDetail)) + $"\nпроверено {Ago(_chk.CheckedAt)} с сервера {_chk.Server}";
+        return ("VPN из РФ:  " + string.Join("   ", list.Select(VpnLine)), Level(list), tip);
+    }
+
+    static string Ago(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        return d.TotalMinutes < 1 ? "только что" : d.TotalHours < 1 ? $"{(int)d.TotalMinutes} мин назад" : $"{(int)d.TotalHours} ч {d.Minutes} мин назад";
+    }
+
+    void UpdateVpnChip()
+    {
+        if (!CheckerOn) { _win.SetVpn(null, "", ""); return; }
+        if (_chkError != "") { _win.SetVpn("VPN из РФ: нет связи", "bad", "xray-чекер: " + _chkError); return; }
+        if (_chk == null) { _win.SetVpn("VPN из РФ: ждём результат", "none", "чекер на сервере ещё не выполнил первую проверку"); return; }
+        if (_chk.Error != "") { _win.SetVpn("VPN из РФ: ошибка", "bad", _chk.Error); return; }
+        var l = _chk.Results.Where(r => r.Ok != null).ToList();
+        var tip = string.Join("\n", _chk.Results.Select(VpnDetail)) + $"\n\nпроверено {Ago(_chk.CheckedAt)} с сервера {_chk.Server}";
+        _win.SetVpn($"VPN из РФ {l.Count(r => r.Ok == true)}/{l.Count}", Level(l), tip);
+    }
+
+    string BuildVpn()
+    {
+        if (!CheckerOn) return "🛡 Xray-чекер не настроен (настройки → xray-чекер).";
+        if (_chkError != "") return "🛡 Нет связи с xray-чекером: " + _chkError;
+        if (_chk == null) return "🛡 Чекер ещё не выполнил первую проверку.";
+        var sb = new StringBuilder();
+        sb.AppendLine($"🛡 VPN из РФ — сервер {_chk.Server}, проверено {Ago(_chk.CheckedAt)}");
+        if (_chk.Error != "") sb.AppendLine("🔴 " + _chk.Error);
+        foreach (var r in _chk.Results)
+            sb.AppendLine(r.Ok == true ? $"✅ {r.Name} — {r.Ms} мс" : r.Ok == false ? $"🔴 {r.Name} — {r.Error}" : $"⚪ {r.Name} — {r.Error}");
+        return sb.ToString().TrimEnd();
+    }
 
     // Загрузка CPU — среднее за время между опросами (около минуты) по накопительным счётчикам /proc/stat.
     // Короткий замер скрипта на многоядерных серверах слишком грубый: при слабой нагрузке он прыгает и часто даёт 0.
@@ -593,6 +739,7 @@ public partial class App : Application
         "/billing" => BuildBilling(),
         "/version" => BuildVersion(),
         "/uptime" => BuildUptime(),
+        "/vpn" => BuildVpn(),
         _ => null,
     };
 
@@ -798,6 +945,11 @@ public partial class App : Application
         foreach (var n in s.Nodes)
             sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {n.Name} · онлайн {n.UsersOnline}"
                           + (n.SrvCpu >= 0 ? $" · CPU {n.CpuPctText}" : "") + (n.RamPctText != "—" ? $" · RAM {n.RamPctText}" : "") + (n.PingText != "" ? $" · {n.PingText}" : ""));
+        if (CheckerOn && _chk != null && _chk.Error == "")
+        {
+            var l = _chk.Results.Where(r => r.Ok != null).ToList();
+            sb.AppendLine($"🛡 VPN из РФ: {l.Count(r => r.Ok == true)}/{l.Count} работают");
+        }
         sb.Append($"Активных проблем: {_log.Active} · обновлено {s.At:HH:mm:ss}");
         return sb.ToString();
     }

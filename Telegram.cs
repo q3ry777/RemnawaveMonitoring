@@ -26,7 +26,7 @@ public class TelegramService
         ("status", "сводка"), ("nodes", "подробности по нодам"), ("users", "кто сейчас онлайн"),
         ("problems", "активные проблемы"), ("services", "сайты и сертификаты"), ("expiring", "что скоро истекает"),
         ("top", "топ-10 по трафику"), ("user", "карточка пользователя"), ("billing", "оплата серверов"),
-        ("uptime", "аптайм за 7 и 30 дней"), ("version", "версии панели, нод и программы"), ("help", "список команд"),
+        ("uptime", "аптайм за 7 и 30 дней"), ("version", "версии панели, нод и программы"), ("vpn", "проверка VPN из РФ"), ("help", "список команд"),
     };
 
     static readonly (string text, string cmd)[] Buttons =
@@ -34,7 +34,7 @@ public class TelegramService
         ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
         ("⚠️ Проблемы", "/problems"), ("🌐 Сайты", "/services"), ("⏳ Истекает", "/expiring"),
         ("📈 Топ", "/top"), ("💳 Оплата", "/billing"), ("🕒 Аптайм", "/uptime"),
-        ("👤 Пользователь", "/user"), ("ℹ️ Версии", "/version"),
+        ("👤 Пользователь", "/user"), ("ℹ️ Версии", "/version"), ("🛡 VPN из РФ", "/vpn"),
     };
 
     static string Norm(string s) => s.Replace("\uFE0F", "").Trim();
@@ -47,7 +47,7 @@ public class TelegramService
             new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" },
             new[] { "⚠️ Проблемы", "🌐 Сайты", "⏳ Истекает" },
             new[] { "📈 Топ", "💳 Оплата", "🕒 Аптайм" },
-            new[] { "👤 Пользователь", "ℹ️ Версии" },
+            new[] { "🛡 VPN из РФ", "👤 Пользователь", "ℹ️ Версии" },
         },
         is_persistent = true,
         resize_keyboard = true,
@@ -58,7 +58,7 @@ public class TelegramService
         "Команды (или кнопки внизу):\n" +
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн\n/problems — активные проблемы\n" +
         "/services — сайты и сертификаты\n/expiring — что скоро истекает\n/top — топ-10 по трафику\n" +
-        "/user имя — карточка пользователя\n/billing — оплата серверов\n/uptime — аптайм за 7 и 30 дней\n/version — версии";
+        "/user имя — карточка пользователя\n/billing — оплата серверов\n/uptime — аптайм за 7 и 30 дней\n/version — версии\n/vpn — проверка VPN из РФ";
 
     public static HttpClient CreateClient(string proxy)
     {
