@@ -567,13 +567,17 @@ public partial class App : Application
         r.Sites.Count == 0 ? "" : r.Sites.All(s => s.Ok) ? $" · сайты {r.Sites.Count}/{r.Sites.Count}"
         : " · не открываются: " + string.Join(", ", r.Sites.Where(s => !s.Ok).Select(s => s.Name));
 
+    static string Mbps(double v) => v >= 100 ? $"{v:0} Мбит/с" : $"{v:0.#} Мбит/с";
+
     static string VpnLine(VpnCheck r) =>
-        r.Ok == true ? $"✓ {r.Name} {r.Ms} мс{SitesShort(r)}" : r.Ok == false ? $"✗ {r.Name}" : $"— {r.Name}";
+        r.Ok == true ? $"✓ {r.Name} {r.Ms} мс" + (r.SpeedMbps is double sp ? $" · {Mbps(sp)}" : "") + SitesShort(r) : r.Ok == false ? $"✗ {r.Name}" : $"— {r.Name}";
 
     static string VpnDetail(VpnCheck r) =>
         (r.Ok == true ? $"✓ {r.Name} — отклик {r.Ms} мс" + (r.ConnectMs is int c && c != r.Ms ? $", первое подключение {c} мс" : "") + $" ({r.Network}/{r.Security})"
          : r.Ok == false ? $"✗ {r.Name} — {r.Error}"
          : $"— {r.Name} — {r.Error}")
+        + (r.SpeedMbps is double sp ? $"\n     скорость {Mbps(sp)}" + (r.SpeedAt is DateTime at ? $" (замер {Ago(at)})" : "")
+           : r.SpeedError != "" ? $"\n     скорость: не удалось замерить — {r.SpeedError}" : "")
         + string.Concat(r.Sites.Select(s => s.Ok ? $"\n     ✓ {s.Name} {s.Ms} мс" : $"\n     ✗ {s.Name} — {s.Error}"));
 
     // ok — всё работает; warn — часть подключений или сайтов не работает; bad — не работает ни одно подключение
@@ -621,7 +625,7 @@ public partial class App : Application
         if (_chk.Error != "") sb.AppendLine("🔴 " + _chk.Error);
         foreach (var r in _chk.Results)
         {
-            sb.AppendLine(r.Ok == true ? $"✅ {r.Name} — {r.Ms} мс" : r.Ok == false ? $"🔴 {r.Name} — {r.Error}" : $"⚪ {r.Name} — {r.Error}");
+            sb.AppendLine(r.Ok == true ? $"✅ {r.Name} — {r.Ms} мс" + (r.SpeedMbps is double sp ? $" · {Mbps(sp)}" : "") : r.Ok == false ? $"🔴 {r.Name} — {r.Error}" : $"⚪ {r.Name} — {r.Error}");
             if (r.Sites.Count > 0)
                 sb.AppendLine("     " + string.Join(" · ", r.Sites.Select(s => s.Ok ? $"✓ {s.Name}" : $"✗ {s.Name} ({s.Error})")));
         }

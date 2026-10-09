@@ -11,7 +11,7 @@ namespace RemnawaveMonitor;
 
 public record SiteCheck(string Name, bool Ok, int? Ms, string Error);
 public record VpnCheck(string Name, string Address, int Port, string Network, string Security, bool? Ok, int? Ms, bool? TcpOk, string Error,
-    List<SiteCheck> Sites, int? ConnectMs = null);
+    List<SiteCheck> Sites, int? ConnectMs = null, double? SpeedMbps = null, DateTime? SpeedAt = null, string SpeedError = "");
 public record CheckerReport(DateTime CheckedAt, string Server, string Error, List<VpnCheck> Results, int Version);
 
 // Xray-чекер на сервере в РФ: установка и чтение результата по SSH
@@ -44,7 +44,11 @@ public static class Checker
                         sites.Add(new SiteCheck(J.S(s, "name"), J.P(s, "ok") is { ValueKind: JsonValueKind.True },
                             J.P(s, "ms") is { ValueKind: JsonValueKind.Number } m ? (int)m.GetDouble() : null, J.S(s, "error")));
                 list.Add(new VpnCheck(J.S(x, "name"), J.S(x, "address"), I("port") ?? 0, J.S(x, "network"), J.S(x, "security"),
-                    B("ok"), I("ms"), B("tcp_ok"), J.S(x, "error"), sites, I("connect_ms")));
+                    B("ok"), I("ms"), B("tcp_ok"), J.S(x, "error"), sites, I("connect_ms"),
+                    J.P(x, "speed_mbps") is { ValueKind: JsonValueKind.Number } sp ? sp.GetDouble() : null,
+                    DateTime.TryParse(J.S(x, "speed_at"), CultureInfo.InvariantCulture,
+                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var sat) ? sat : null,
+                    J.S(x, "speed_error")));
             }
         return new CheckerReport(at, J.S(r, "server"), J.S(r, "error"), list, (int)J.N(r, "version"));
     }
@@ -69,12 +73,13 @@ public static class Checker
             return (name, url);
         }).ToList();
 
-    public static string SetupCommand(string sshUser, string password, string subUrl, int intervalMin, string sitesText)
+    public static string SetupCommand(string sshUser, string password, string subUrl, int intervalMin, string sitesText, int speedMin)
     {
         static string Q(string s) => "'" + s.Replace("'", "'\\''") + "'";
         var cfg = JsonSerializer.Serialize(new Dictionary<string, object>
         {
             ["sub_url"] = subUrl,
+            ["speed_interval_min"] = speedMin,
             ["sites"] = ParseSites(sitesText).Select(s => new Dictionary<string, string> { ["name"] = s.name, ["url"] = s.url }).ToList(),
         });
         var text = $$"""
@@ -124,7 +129,7 @@ public static class Checker
             User=rw-checker
             Group=rw-checker
             ExecStart=/usr/bin/env python3 /usr/local/lib/rw-checker/rw-checker.py
-            TimeoutStartSec=180
+            TimeoutStartSec=900
             NoNewPrivileges=yes
             PrivateTmp=yes
             ProtectSystem=strict

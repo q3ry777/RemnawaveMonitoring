@@ -20,6 +20,11 @@ DEFAULTS = {
         {"name": "ChatGPT", "url": "https://api.openai.com/v1/models"},
     ],
     "site_timeout": 10,
+    # замер скорости через каждое рабочее подключение: раз в speed_interval_min минут (0 — выключено)
+    "speed_url": "https://speed.cloudflare.com/__down?bytes=10000000",
+    "speed_interval_min": 60,
+    "speed_timeout": 25,
+    "speed_state": "/var/lib/rw-checker/speed.json",
 }
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -216,11 +221,53 @@ def check_one(e, port, cfg):
     return {"ok": ok, "ms": ms, "connect_ms": connect_ms, "tcp_ok": tcp_ok, "tcp_ms": tcp_ms, "error": "" if ok else err, "sites": sites}
 
 
+def speed_via(port, cfg):
+    """Скачивание файла через подключение. -> (Мбит/с или None, ошибка)"""
+    cmd = ["curl", "-sS", "-o", "/dev/null", "-w", "%{size_download} %{time_total}", "--max-time", str(cfg["speed_timeout"]),
+           "-A", UA, "--noproxy", "", "-x", f"socks5h://127.0.0.1:{port}", cfg["speed_url"]]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    out = p.stdout.strip().split()
+    try:
+        size, t = float(out[0]), float(out[1])
+    except (IndexError, ValueError):
+        size, t = 0.0, 0.0
+    # при таймауте считаем по тому, что успело скачаться (медленное подключение — тоже результат)
+    if size >= 512 * 1024 and t > 0 and p.returncode in (0, 28):
+        return round(size * 8 / t / 1e6, 1), ""
+    return None, "таймаут" if p.returncode == 28 else ((p.stderr.strip().splitlines() or ["нет данных"])[-1][:100])
+
+
+def run_speed(check, res, cfg):
+    """Замер по очереди (параллельно подключения делили бы канал сервера) раз в speed_interval_min минут.
+    Последние значения хранятся между запусками в speed.json."""
+    try:
+        with open(cfg["speed_state"], encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        state = {}
+    interval = int(cfg.get("speed_interval_min") or 0)
+    due = interval > 0 and time.time() - state.get("_at", 0) >= interval * 60
+    if due:
+        for i, e in enumerate(check):
+            if res.get(i, {}).get("ok"):
+                mbps, err = speed_via(cfg["base_port"] + i, cfg)
+                state[e["name"]] = {"mbps": mbps, "error": err, "at": now_iso()}
+        state["_at"] = time.time()
+        try:
+            write_result(cfg["speed_state"], state)
+        except OSError:
+            pass
+    for i, e in enumerate(check):
+        s = state.get(e["name"]) if interval > 0 else None
+        if s and i in res:
+            res[i]["speed_mbps"], res[i]["speed_error"], res[i]["speed_at"] = s.get("mbps"), s.get("error", ""), s.get("at", "")
+
+
 def main():
     cfg = dict(DEFAULTS)
     with open(CONFIG, encoding="utf-8") as f:
         cfg.update(json.load(f))
-    result = {"version": 2, "sites": [s["name"] for s in cfg.get("sites") or []], "checked_at": now_iso(), "server": socket.gethostname(), "test_url": cfg["test_url"],
+    result = {"version": 3, "sites": [s["name"] for s in cfg.get("sites") or []], "checked_at": now_iso(), "server": socket.gethostname(), "test_url": cfg["test_url"],
               "results": [], "error": ""}
     try:
         links = fetch_subscription(cfg["sub_url"])
@@ -264,6 +311,7 @@ def main():
                     futs = {pool.submit(check_one, e, cfg["base_port"] + i, cfg): i for i, e in enumerate(check)}
                     for f, i in futs.items():
                         res[i] = f.result()
+                run_speed(check, res, cfg)
     finally:
         if proc and proc.poll() is None:
             proc.terminate()

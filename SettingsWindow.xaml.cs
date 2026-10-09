@@ -51,6 +51,7 @@ public partial class SettingsWindow : Window
         ChkEnabled.IsChecked = s.CheckerEnabled;
         ChkUser.Text = s.CheckerTestUser;
         ChkInterval.Text = s.CheckerIntervalMin.ToString();
+        ChkSpeed.Text = s.CheckerSpeedMin.ToString();
         ChkSites.Text = s.CheckerSites.Replace("\n", "\r\n");
         // подключения из последнего результата чекера + ранее снятые (их сейчас может не быть в подписке)
         FillConns(checkerConns.Concat(s.CheckerExcluded));
@@ -254,6 +255,8 @@ public partial class SettingsWindow : Window
             : "Подписка найдена: " + (sub.Length > 24 ? sub[..24] + "…" : sub);
     }
 
+    int SpeedMin() => int.TryParse(ChkSpeed.Text.Trim(), out var v) && v is >= 0 and <= 1440 ? v : 60;
+
     void StoreChk()
     {
         _chk.Host = ChkHost.Text.Trim();
@@ -289,7 +292,7 @@ public partial class SettingsWindow : Window
         ChkInterval.Text = interval.ToString();
         try
         {
-            Clipboard.SetText(Checker.SetupCommand(_chk.User, _chk.Password, sub, interval, ChkSites.Text.Replace("\r\n", "\n")));
+            Clipboard.SetText(Checker.SetupCommand(_chk.User, _chk.Password, sub, interval, ChkSites.Text.Replace("\r\n", "\n"), SpeedMin()));
             ChkResultText("Команда скопирована. Вставьте её в консоль сервера в РФ под root и дождитесь «RW-CHECKER: готово» (около минуты), затем нажмите «проверить подключение».", "Green");
         }
         catch (Exception ex) { ChkResultText("Не удалось скопировать: " + ex.Message, "Red"); }
@@ -342,6 +345,7 @@ public partial class SettingsWindow : Window
         _s.CheckerTestUser = ChkUser.Text.Trim();
         _s.CheckerIntervalMin = int.TryParse(ChkInterval.Text.Trim(), out var ci) && ci is >= 2 and <= 60 ? ci : 5;
         _s.CheckerSites = ChkSites.Text.Replace("\r\n", "\n").Trim();
+        _s.CheckerSpeedMin = SpeedMin();
         _s.CheckerExcluded = _connBoxes.Where(b => b.IsChecked != true).Select(b => (string)b.Tag).ToList();
         _s.MetricsUrl = MetricsUrlBox.Text.Trim();
         _s.MetricsUser = MetricsUserBox.Text.Trim();
