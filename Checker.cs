@@ -89,10 +89,14 @@ public static class Checker
             set -e
             U={{Q(sshUser)}}
             echo "RW-CHECKER: установка…"
-            if command -v apt-get >/dev/null 2>&1; then
-              apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl unzip python3 >/dev/null
-            elif command -v dnf >/dev/null 2>&1; then dnf install -y -q curl unzip python3 >/dev/null
-            elif command -v yum >/dev/null 2>&1; then yum install -y -q curl unzip python3 >/dev/null
+            if command -v curl >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then :
+            elif command -v apt-get >/dev/null 2>&1; then
+              echo "RW-CHECKER: ставлю пакеты (если идёт автообновление системы — жду его, до 10 минут)…"
+              L="-o DPkg::Lock::Timeout=600"
+              apt-get $L update -qq >/dev/null || true
+              DEBIAN_FRONTEND=noninteractive apt-get $L install -y -qq curl unzip python3 >/dev/null || true
+            elif command -v dnf >/dev/null 2>&1; then dnf install -y -q curl unzip python3 >/dev/null || true
+            elif command -v yum >/dev/null 2>&1; then yum install -y -q curl unzip python3 >/dev/null || true
             fi
             for b in curl unzip python3 systemctl; do command -v $b >/dev/null 2>&1 || { echo "RW-CHECKER: не найдено $b"; exit 1; }; done
             case "$(uname -m)" in x86_64|amd64) A=64 ;; aarch64|arm64) A=arm64-v8a ;; *) echo "RW-CHECKER: архитектура $(uname -m) не поддерживается"; exit 1 ;; esac
