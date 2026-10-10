@@ -12,7 +12,8 @@ namespace RemnawaveMonitor;
 public record SiteCheck(string Name, bool Ok, int? Ms, string Error);
 public record VpnCheck(string Name, string Address, int Port, string Network, string Security, bool? Ok, int? Ms, bool? TcpOk, string Error,
     List<SiteCheck> Sites, int? ConnectMs = null, double? SpeedMbps = null, DateTime? SpeedAt = null, string SpeedError = "");
-public record CheckerReport(DateTime CheckedAt, string Server, string Error, List<VpnCheck> Results, int Version);
+public record CheckerReport(DateTime CheckedAt, string Server, string Error, List<VpnCheck> Results, int Version,
+    double? BaselineMbps = null, string BaselineError = "");
 
 // Xray-чекер на сервере в РФ: установка и чтение результата по SSH
 public static class Checker
@@ -50,7 +51,8 @@ public static class Checker
                         DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var sat) ? sat : null,
                     J.S(x, "speed_error")));
             }
-        return new CheckerReport(at, J.S(r, "server"), J.S(r, "error"), list, (int)J.N(r, "version"));
+        return new CheckerReport(at, J.S(r, "server"), J.S(r, "error"), list, (int)J.N(r, "version"),
+            J.P(r, "speed_baseline_mbps") is { ValueKind: JsonValueKind.Number } bl ? bl.GetDouble() : null, J.S(r, "speed_baseline_error"));
     }
 
     static string PyScript()

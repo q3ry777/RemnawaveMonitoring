@@ -21,9 +21,10 @@ DEFAULTS = {
     ],
     "site_timeout": 10,
     # замер скорости через каждое рабочее подключение: раз в speed_interval_min минут (0 — выключено)
-    "speed_url": "https://speed.cloudflare.com/__down?bytes=10000000",
+    "speed_url": "https://speed.cloudflare.com/__down?bytes=25000000",
+    "speed_streams": 4,
     "speed_interval_min": 60,
-    "speed_timeout": 25,
+    "speed_timeout": 10,
     "speed_state": "/var/lib/rw-checker/speed.json",
 }
 
@@ -222,19 +223,31 @@ def check_one(e, port, cfg):
 
 
 def speed_via(port, cfg):
-    """Скачивание файла через подключение. -> (Мбит/с или None, ошибка)"""
-    cmd = ["curl", "-sS", "-o", "/dev/null", "-w", "%{size_download} %{time_total}", "--max-time", str(cfg["speed_timeout"]),
-           "-A", UA, "--noproxy", "", "-x", f"socks5h://127.0.0.1:{port}", cfg["speed_url"]]
-    p = subprocess.run(cmd, capture_output=True, text=True)
-    out = p.stdout.strip().split()
-    try:
-        size, t = float(out[0]), float(out[1])
-    except (IndexError, ValueError):
-        size, t = 0.0, 0.0
-    # при таймауте считаем по тому, что успело скачаться (медленное подключение — тоже результат)
-    if size >= 512 * 1024 and t > 0 and p.returncode in (0, 28):
-        return round(size * 8 / t / 1e6, 1), ""
-    return None, "таймаут" if p.returncode == 28 else ((p.stderr.strip().splitlines() or ["нет данных"])[-1][:100])
+    """Замер скорости как в speedtest: несколько параллельных потоков, считается только время передачи данных
+    (без рукопожатия с нодой, TLS с сайтом и разгона TCP). port=None — напрямую с сервера, без VPN.
+    -> (Мбит/с или None, ошибка)"""
+    streams = max(1, int(cfg.get("speed_streams") or 4))
+    base = ["curl", "-sS", "-o", "/dev/null", "-w", "%{size_download} %{time_total} %{time_starttransfer}",
+            "--max-time", str(cfg["speed_timeout"]), "-A", UA]
+    base += ["--noproxy", "", "-x", f"socks5h://127.0.0.1:{port}"] if port else ["--noproxy", "*"]
+    procs = [subprocess.Popen(base + [cfg["speed_url"]], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+             for _ in range(streams)]
+    total, longest, errors = 0.0, 0.0, []
+    for pr in procs:
+        out, err = pr.communicate()
+        try:
+            size, t_total, t_start = (float(x) for x in out.split()[:3])
+        except ValueError:
+            errors.append("таймаут" if pr.returncode == 28 else ((err.strip().splitlines() or ["нет данных"])[-1][:100]))
+            continue
+        if pr.returncode not in (0, 28) or size < 256 * 1024:   # при таймауте считаем по тому, что успело скачаться
+            errors.append("таймаут" if pr.returncode == 28 else ((err.strip().splitlines() or [f"код {pr.returncode}"])[-1][:100]))
+            continue
+        total += size
+        longest = max(longest, t_total - t_start)
+    if total > 0 and longest > 0:
+        return round(total * 8 / longest / 1e6, 1), ""
+    return None, errors[0] if errors else "нет данных"
 
 
 def run_speed(check, res, cfg):
@@ -248,6 +261,9 @@ def run_speed(check, res, cfg):
     interval = int(cfg.get("speed_interval_min") or 0)
     due = interval > 0 and time.time() - state.get("_at", 0) >= interval * 60
     if due:
+        # канал самого сервера-чекера без VPN — потолок, выше которого замер через VPN не покажет
+        mbps, err = speed_via(None, cfg)
+        state["_baseline"] = {"mbps": mbps, "error": err, "at": now_iso()}
         for i, e in enumerate(check):
             if res.get(i, {}).get("ok"):
                 mbps, err = speed_via(cfg["base_port"] + i, cfg)
@@ -261,13 +277,14 @@ def run_speed(check, res, cfg):
         s = state.get(e["name"]) if interval > 0 else None
         if s and i in res:
             res[i]["speed_mbps"], res[i]["speed_error"], res[i]["speed_at"] = s.get("mbps"), s.get("error", ""), s.get("at", "")
+    return state.get("_baseline") if interval > 0 else None
 
 
 def main():
     cfg = dict(DEFAULTS)
     with open(CONFIG, encoding="utf-8") as f:
         cfg.update(json.load(f))
-    result = {"version": 3, "sites": [s["name"] for s in cfg.get("sites") or []], "checked_at": now_iso(), "server": socket.gethostname(), "test_url": cfg["test_url"],
+    result = {"version": 4, "sites": [s["name"] for s in cfg.get("sites") or []], "checked_at": now_iso(), "server": socket.gethostname(), "test_url": cfg["test_url"],
               "results": [], "error": ""}
     try:
         links = fetch_subscription(cfg["sub_url"])
@@ -311,7 +328,10 @@ def main():
                     futs = {pool.submit(check_one, e, cfg["base_port"] + i, cfg): i for i, e in enumerate(check)}
                     for f, i in futs.items():
                         res[i] = f.result()
-                run_speed(check, res, cfg)
+                baseline = run_speed(check, res, cfg)
+                if baseline:
+                    result["speed_baseline_mbps"] = baseline.get("mbps")
+                    result["speed_baseline_error"] = baseline.get("error", "")
     finally:
         if proc and proc.poll() is None:
             proc.terminate()

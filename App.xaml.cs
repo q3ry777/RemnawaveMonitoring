@@ -604,6 +604,11 @@ public partial class App : Application
         return d.TotalMinutes < 1 ? "только что" : d.TotalHours < 1 ? $"{(int)d.TotalMinutes} мин назад" : $"{(int)d.TotalHours} ч {d.Minutes} мин назад";
     }
 
+    // Канал самого сервера чекера без VPN — потолок, выше которого скорость через ноды быть не может.
+    static string BaselineLine(CheckerReport c) =>
+        c.BaselineMbps is double b ? $"\nканал сервера чекера без VPN: {Mbps(b)}"
+        : c.BaselineError != "" ? $"\nканал сервера чекера: {c.BaselineError}" : "";
+
     void UpdateVpnChip()
     {
         if (!CheckerOn) { _win.SetVpn(null, "", ""); return; }
@@ -611,7 +616,7 @@ public partial class App : Application
         if (_chk == null) { _win.SetVpn("VPN из РФ: ждём результат", "none", "чекер на сервере ещё не выполнил первую проверку"); return; }
         if (_chk.Error != "") { _win.SetVpn("VPN из РФ: ошибка", "bad", _chk.Error); return; }
         var l = _chk.Results.Where(r => r.Ok != null).ToList();
-        var tip = string.Join("\n", _chk.Results.Select(VpnDetail)) + $"\n\nпроверено {Ago(_chk.CheckedAt)} с сервера {_chk.Server}";
+        var tip = string.Join("\n", _chk.Results.Select(VpnDetail)) + $"\n\nпроверено {Ago(_chk.CheckedAt)} с сервера {_chk.Server}" + BaselineLine(_chk);
         _win.SetVpn($"VPN из РФ {l.Count(r => r.Ok == true)}/{l.Count}", Level(l), tip);
     }
 
@@ -622,6 +627,7 @@ public partial class App : Application
         if (_chk == null) return "🛡 Чекер ещё не выполнил первую проверку.";
         var sb = new StringBuilder();
         sb.AppendLine($"🛡 VPN из РФ — сервер {_chk.Server}, проверено {Ago(_chk.CheckedAt)}");
+        if (BaselineLine(_chk) is { Length: > 0 } bl) sb.AppendLine(bl.Trim());
         if (_chk.Error != "") sb.AppendLine("🔴 " + _chk.Error);
         foreach (var r in _chk.Results)
         {

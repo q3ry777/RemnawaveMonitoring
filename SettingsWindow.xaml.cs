@@ -318,8 +318,9 @@ public partial class SettingsWindow : Window
             var text = $"✓ подключено · сервер {rep.Server}, проверка от {rep.CheckedAt.ToLocalTime():dd.MM HH:mm}: работают {ok} из {l.Count}"
                        + (bad.Count > 0 ? " · не работают: " + string.Join(", ", bad) : "")
                        + (siteBad.Count > 0 ? " · не открываются: " + string.Join(", ", siteBad) : "");
-            if (rep.Version < 2) text += ". На сервере старая версия чекера без проверки сайтов — выполните команду установки ещё раз.";
-            ChkResultText(text, bad.Count == 0 && siteBad.Count == 0 && rep.Version >= 2 ? "Green" : "Amber");
+            if (rep.BaselineMbps is double bl) text += $" · канал сервера {bl:0} Мбит/с";
+            if (rep.Version < 4) text += ". На сервере старая версия чекера — выполните команду установки ещё раз.";
+            ChkResultText(text, bad.Count == 0 && siteBad.Count == 0 && rep.Version >= 4 ? "Green" : "Amber");
         }
         catch (Exception ex) { ChkResultText("✗ " + ex.Message, "Red"); }
     }
