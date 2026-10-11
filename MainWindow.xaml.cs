@@ -52,16 +52,6 @@ public partial class MainWindow : Window
         MutesChanged?.Invoke();
     }
 
-    // Плашка «VPN из РФ N/M»: text == null — скрыть
-    public void SetVpn(string? text, string level, string tip)
-    {
-        VpnChip.Visibility = text == null ? Visibility.Collapsed : Visibility.Visible;
-        if (text == null) return;
-        VpnChipText.Text = text;
-        VpnChip.ToolTip = tip;
-        VpnDot.SetResourceReference(Shape.FillProperty, level switch { "ok" => "Green", "warn" => "Amber", "bad" => "Red", _ => "Dim" });
-    }
-
     // Индикатор «не беспокоить»: null — скрыть
     public void SetDnd(string? text)
     {
@@ -187,7 +177,7 @@ public partial class MainWindow : Window
     {
         while (d != null)
         {
-            if (d is FrameworkElement f && (f.DataContext is UserRow || f.DataContext is NodeRow || f.DataContext is ServiceRow)) return f.DataContext;
+            if (d is FrameworkElement f && (f.DataContext is UserRow || f.DataContext is NodeRow)) return f.DataContext;
             d = d is Visual || d is System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
         }
         return null;
@@ -206,8 +196,6 @@ public partial class MainWindow : Window
     }
 
     void OpenPanel() => OpenUrl(_s.BaseUrl);
-
-    public void UpdateServices(System.Collections.Generic.List<ServiceRow> rows) => ServicesGrid.ItemsSource = rows;
 
     void List_RightClick(object sender, MouseButtonEventArgs e)
     {
@@ -265,18 +253,8 @@ public partial class MainWindow : Window
                         });
                     }
                     break;
-                case ServiceRow sv:
-                    Add("копировать адрес", () => CopyText(sv.Url, sv.Url));
-                    Add("открыть в браузере", () => OpenUrl(sv.Url));
-                    var sm = _s.IsMuted("site:" + sv.Url, "site");
-                    Add(sm ? "🔔 включить уведомления по сайту" : "🔕 отключить уведомления по сайту", () =>
-                    {
-                        _s.ToggleMute("site:" + sv.Url, "site");
-                        MuteChanged($"{sv.Name}: уведомления {(sm ? "включены" : "отключены")}");
-                    });
-                    break;
             }
-            if (row is not ServiceRow) Add("открыть панель в браузере", OpenPanel);
+            Add("открыть панель в браузере", OpenPanel);
 
             menu.PlacementTarget = (UIElement)sender;
             menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
@@ -288,13 +266,11 @@ public partial class MainWindow : Window
 
     void Tab_Checked(object sender, RoutedEventArgs e)
     {
-        if (UsersPanel == null || NodesPanel == null || ServicesPanel == null || SearchBox == null || UsersFilters == null) return;
+        if (UsersPanel == null || NodesPanel == null || SearchBox == null || UsersFilters == null) return;
         bool users = UsersTab.IsChecked == true;
         bool nodes = NodesTab.IsChecked == true;
-        bool services = ServicesTab.IsChecked == true;
         UsersPanel.Visibility = users ? Visibility.Visible : Visibility.Collapsed;
         NodesPanel.Visibility = nodes ? Visibility.Visible : Visibility.Collapsed;
-        ServicesPanel.Visibility = services ? Visibility.Visible : Visibility.Collapsed;
         SearchBox.Visibility = users ? Visibility.Visible : Visibility.Hidden;
         UsersFilters.Visibility = users ? Visibility.Visible : Visibility.Collapsed;
     }

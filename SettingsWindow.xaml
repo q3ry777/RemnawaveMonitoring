@@ -89,8 +89,6 @@
                 <RadioButton GroupName="nav" Tag="PagePanel" Content="панель" Style="{StaticResource NavItem}" IsChecked="True" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageSsh" Content="серверы · SSH" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageChecks" Content="проверки нод" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
-                <RadioButton GroupName="nav" Tag="PageChecker" Content="xray-чекер" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
-                <RadioButton GroupName="nav" Tag="PageSites" Content="сайты" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageTg" Content="telegram" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageUpdates" Content="обновления" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageMetrics" Content="метрики" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
@@ -211,82 +209,6 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- ===== xray-чекер ===== -->
-            <ScrollViewer x:Name="PageChecker" Style="{StaticResource Page}">
-                <StackPanel Margin="30,24,30,20">
-                    <TextBlock Text="xray-чекер" Style="{StaticResource PageTitle}"/>
-                    <TextBlock Style="{StaticResource PageDesc}"
-                               Text="Сервер в РФ по расписанию подключается к каждому вашему подключению через Xray — как настоящий клиент — и открывает через него сайт. Так видна блокировка протокола или SNI, которую не ловит проверка порта. Результат программа забирает по SSH, уведомления отправляет как обычно."/>
-                    <CheckBox x:Name="ChkEnabled" Style="{StaticResource Check}" Content="использовать xray-чекер"/>
-
-                    <TextBlock Text="ТЕСТОВЫЙ ПОЛЬЗОВАТЕЛЬ ПАНЕЛИ (его подписка используется для проверки)" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="ChkUser" Style="{StaticResource Input}" TextChanged="ChkUser_Changed"/>
-                    <TextBlock x:Name="ChkUserHint" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"/>
-
-                    <TextBlock Text="ПОДКЛЮЧЕНИЯ ДЛЯ ПРОВЕРКИ (снятые не показываются и не дают уведомлений)" Style="{StaticResource Field}"/>
-                    <StackPanel x:Name="ChkConns"/>
-                    <TextBlock x:Name="ChkConnsHint" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{DynamicResource Dim}"/>
-
-                    <TextBlock Text="ПРОВЕРЯТЬ КАЖДЫЕ, МИН" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="ChkInterval" Style="{StaticResource Input}" Width="90" HorizontalAlignment="Left"/>
-
-                    <TextBlock Text="ЗАМЕР СКОРОСТИ ЧЕРЕЗ КАЖДОЕ ПОДКЛЮЧЕНИЕ, РАЗ В … МИН (0 — выключить)" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="ChkSpeed" Style="{StaticResource Input}" Width="90" HorizontalAlignment="Left"/>
-                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
-                               Text="Через каждое рабочее подключение по очереди качается файл в 4 потока, до 10 секунд (до 100 МБ). Считается только время передачи, без рукопожатия. Отдельно замеряется канал самого сервера без VPN — это потолок. Расход трафика зависит от скорости: на 100+ Мбит/с — до 100 МБ на подключение за замер. После изменения выполните команду установки ещё раз."/>
-
-                    <TextBlock Text="САЙТЫ, КОТОРЫЕ ОТКРЫВАЮТСЯ ЧЕРЕЗ КАЖДОЕ ПОДКЛЮЧЕНИЕ (название и адрес, по одному в строке)" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="ChkSites" Style="{StaticResource Input}" AcceptsReturn="True" Height="100"
-                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
-                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
-                               Text="Видно, если подключение работает, но конкретный сервис через него не открывается (гео-блок, блокировка). Ответ 403/451 считается отказом сайта. После изменения списка выполните команду установки на сервере ещё раз."/>
-
-                    <TextBlock Text="СЕРВЕР В РФ: АДРЕС И ПОРТ SSH" Style="{StaticResource Field}"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
-                        <TextBox x:Name="ChkHost" Style="{StaticResource Input}"/>
-                        <TextBox x:Name="ChkPort" Grid.Column="2" Style="{StaticResource Input}"/>
-                    </Grid>
-                    <TextBlock Text="ПОЛЬЗОВАТЕЛЬ ДЛЯ ЧТЕНИЯ РЕЗУЛЬТАТА (отдельный, не root)" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="ChkSshUser" Style="{StaticResource Input}"/>
-                    <TextBlock Text="ПАРОЛЬ (хранится зашифрованным)" Style="{StaticResource Field}"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <PasswordBox x:Name="ChkPass" Style="{StaticResource InputPwd}"/>
-                        <Button Grid.Column="1" Content="сгенерировать" Style="{StaticResource Btn}" Click="ChkGen_Click"/>
-                    </Grid>
-                    <WrapPanel Margin="0,16,0,0">
-                        <Button Content="скопировать команду установки" Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Click="ChkCopy_Click"/>
-                        <Button Content="проверить подключение" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="ChkTest_Click"/>
-                    </WrapPanel>
-                    <TextBlock x:Name="ChkResult" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"/>
-                    <DockPanel Margin="0,14,0,0">
-                        <Button DockPanel.Dock="Right" Content="сбросить ключ" Style="{StaticResource Btn}" Click="ChkResetKey_Click"
-                                ToolTip="если сервер переустанавливали — ключ запомнится заново при следующем подключении"/>
-                        <TextBlock x:Name="ChkKey" FontSize="11" Foreground="{DynamicResource Dim}" TextWrapping="Wrap" VerticalAlignment="Center"/>
-                    </DockPanel>
-                    <Border Margin="0,18,0,0" Padding="14,12" CornerRadius="8" BorderThickness="1"
-                            BorderBrush="{DynamicResource Line}" Background="{DynamicResource Panel}">
-                        <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Dim}" LineHeight="19">
-                            <Run Text="как подключить" FontWeight="Bold" Foreground="{DynamicResource Fg}"/><LineBreak/>
-                            <Run Text="1. В панели создайте пользователя для проверки (например, rw-checker) с доступом ко всем нодам и небольшим лимитом трафика. Впишите его имя выше."/><LineBreak/>
-                            <Run Text="2. Укажите адрес сервера в РФ, нажмите «сгенерировать», затем «скопировать команду установки» и выполните её на сервере под root. Дождитесь «RW-CHECKER: готово»."/><LineBreak/>
-                            <Run Text="3. Включите «использовать xray-чекер», нажмите «проверить подключение», затем «сохранить»."/>
-                        </TextBlock>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- ===== сайты ===== -->
-            <ScrollViewer x:Name="PageSites" Style="{StaticResource Page}">
-                <StackPanel Margin="30,24,30,20">
-                    <TextBlock Text="сайты" Style="{StaticResource PageTitle}"/>
-                    <TextBlock Text="Адреса для вкладки «сервисы», по одному в строке. Проверяются раз в минуту: ответ, время, срок сертификата." Style="{StaticResource PageDesc}"/>
-                    <TextBox x:Name="ServicesBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="320"
-                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
-                </StackPanel>
-            </ScrollViewer>
-
             <!-- ===== telegram ===== -->
             <ScrollViewer x:Name="PageTg" Style="{StaticResource Page}">
                 <StackPanel Margin="30,24,30,20">
@@ -305,7 +227,6 @@
                     <TextBox x:Name="TgProxyBox" Style="{StaticResource Input}"/>
                     <TextBlock Text="ЧТО ПРИСЫЛАТЬ" Style="{StaticResource Field}" Margin="0,20,0,4"/>
                     <CheckBox x:Name="TgNodesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="ноды и связь с панелью"/>
-                    <CheckBox x:Name="TgServicesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="сайты и сертификаты"/>
                     <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="лимиты трафика и подписки пользователей"/>
                     <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="оплата серверов"/>
                     <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="новые версии (панель, ноды, программа)"/>

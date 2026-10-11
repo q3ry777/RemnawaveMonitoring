@@ -16,13 +16,7 @@ public partial class SettingsWindow : Window
     readonly ToggleButton[] _hours = new ToggleButton[24];
     SshServer? _cur;
 
-    readonly List<(string name, string sub)> _users;
-    SshServer _chk;
-
-    readonly List<CheckBox> _connBoxes = new();
-
-    public SettingsWindow(Settings s, IEnumerable<(string name, string address)> nodes, IEnumerable<(string name, string sub)> users,
-        IEnumerable<string> checkerConns)
+    public SettingsWindow(Settings s, IEnumerable<(string name, string address)> nodes)
     {
         InitializeComponent();
         SourceInitialized += (_, _) => WinChrome.Apply(this);
@@ -45,28 +39,10 @@ public partial class SettingsWindow : Window
         if (_servers.Count > 0) SrvList.SelectedIndex = 0;
         else { SrvEmpty.Visibility = Visibility.Visible; SrvBlock.Visibility = Visibility.Collapsed; }
 
-        // xray-чекер
-        _users = users.ToList();
-        _chk = s.Checker.Clone();
-        ChkEnabled.IsChecked = s.CheckerEnabled;
-        ChkUser.Text = s.CheckerTestUser;
-        ChkInterval.Text = s.CheckerIntervalMin.ToString();
-        ChkSpeed.Text = s.CheckerSpeedMin.ToString();
-        ChkSites.Text = s.CheckerSites.Replace("\n", "\r\n");
-        // подключения из последнего результата чекера + ранее снятые (их сейчас может не быть в подписке)
-        FillConns(checkerConns.Concat(s.CheckerExcluded));
-        ChkHost.Text = _chk.Host;
-        ChkPort.Text = _chk.Port.ToString();
-        ChkSshUser.Text = _chk.User;
-        ChkPass.Password = _chk.Password;
-        ShowChkKey();
-        ChkUser_Changed(this, null!);
-
-        // проверки и сайты
+        // проверки
         ProbeBox.IsChecked = s.ProbeEnabled;
         RuBox.IsChecked = s.RuCheckEnabled;
         ProbePortBox.Text = s.ProbePort.ToString();
-        ServicesBox.Text = s.ServicesText.Replace("\n", "\r\n");
 
         // telegram
         TgBox.IsChecked = s.TgEnabled;
@@ -74,7 +50,6 @@ public partial class SettingsWindow : Window
         TgChatBox.Text = s.TgChatId;
         TgProxyBox.Text = s.TgProxy;
         TgNodesBox.IsChecked = s.TgNodes;
-        TgServicesBox.IsChecked = s.TgServices;
         TgLimitsBox.IsChecked = s.TgLimits;
         TgBillingBox.IsChecked = s.TgBilling;
         TgUpdatesBox.IsChecked = s.TgUpdates;
@@ -108,7 +83,7 @@ public partial class SettingsWindow : Window
     void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton rb || rb.Tag is not string page) return;
-        foreach (var name in new[] { "PagePanel", "PageSsh", "PageChecks", "PageChecker", "PageSites", "PageTg", "PageUpdates", "PageMetrics", "PageGeneral" })
+        foreach (var name in new[] { "PagePanel", "PageSsh", "PageChecks", "PageTg", "PageUpdates", "PageMetrics", "PageGeneral" })
             if (FindName(name) is UIElement el)
                 el.Visibility = name == page ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -224,113 +199,6 @@ public partial class SettingsWindow : Window
         ShowKey();
     }
 
-    // ---- xray-чекер ----
-    // Галочки подключений: из последнего результата, ранее снятые и из «проверить подключение»
-    void FillConns(IEnumerable<string> names)
-    {
-        foreach (var name in names.Where(n => n != "").Distinct())
-        {
-            if (_connBoxes.Any(b => (string)b.Tag == name)) continue;
-            var cb = new CheckBox { Content = name, Tag = name, IsChecked = !_s.CheckerExcluded.Contains(name),
-                                    Style = (Style)FindResource("Check"), Margin = new Thickness(0, 6, 0, 0) };
-            _connBoxes.Add(cb);
-            ChkConns.Children.Add(cb);
-        }
-        ChkConnsHint.Text = _connBoxes.Count == 0
-            ? "Список появится после первой проверки — нажмите «проверить подключение» внизу."
-            : "Снимите галочку с подключений, которые проверять не нужно, и нажмите «сохранить». Переустанавливать чекер не надо.";
-    }
-    string? SubOf(string name) =>
-        _users.Where(u => u.name.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)).Select(u => u.sub).FirstOrDefault();
-
-    void ChkUser_Changed(object sender, TextChangedEventArgs e)
-    {
-        var name = ChkUser.Text.Trim();
-        var sub = SubOf(name);
-        ChkUserHint.SetResourceReference(TextBlock.ForegroundProperty, sub == null && name != "" ? "Red" : "Dim");
-        ChkUserHint.Text = name == "" ? "Впишите имя пользователя, созданного для проверки."
-            : _users.Count == 0 ? "Список пользователей появится после первого ответа панели."
-            : sub == null ? "Пользователь не найден в панели."
-            : sub == "" ? "У пользователя нет ссылки подписки."
-            : "Подписка найдена: " + (sub.Length > 24 ? sub[..24] + "…" : sub);
-    }
-
-    int SpeedMin() => int.TryParse(ChkSpeed.Text.Trim(), out var v) && v is >= 0 and <= 1440 ? v : 60;
-
-    void StoreChk()
-    {
-        _chk.Host = ChkHost.Text.Trim();
-        _chk.Port = int.TryParse(ChkPort.Text.Trim(), out var p) && p is > 0 and <= 65535 ? p : 22;
-        _chk.User = ChkSshUser.Text.Trim();
-        _chk.Password = ChkPass.Password;
-    }
-
-    void ShowChkKey() => ChkKey.Text = _chk.HostKey == "" ? "ключ сервера: запомнится при первом подключении" : "ключ сервера: SHA256:" + _chk.HostKey;
-
-    void ChkResultText(string text, string brush)
-    {
-        ChkResult.Text = text;
-        ChkResult.SetResourceReference(TextBlock.ForegroundProperty, brush);
-    }
-
-    void ChkGen_Click(object sender, RoutedEventArgs e)
-    {
-        ChkPass.Password = SshStats.NewPassword();
-        ChkResultText("Пароль создан. Теперь скопируйте команду установки — пароль уже в ней.", "Dim");
-    }
-
-    void ChkCopy_Click(object sender, RoutedEventArgs e)
-    {
-        var sub = SubOf(ChkUser.Text);
-        if (string.IsNullOrEmpty(sub)) { ChkResultText("Сначала укажите тестового пользователя панели — нужна его подписка.", "Red"); return; }
-        var u = ChkSshUser.Text.Trim();
-        if (u == "" || u == "root" || !Regex.IsMatch(u, "^[a-z_][a-z0-9_-]{0,31}$"))
-        { ChkResultText("Имя SSH-пользователя: латиница в нижнем регистре, цифры, «_» и «-», не root.", "Red"); return; }
-        if (ChkPass.Password == "") ChkPass.Password = SshStats.NewPassword();
-        StoreChk();
-        int interval = int.TryParse(ChkInterval.Text.Trim(), out var m) && m is >= 2 and <= 60 ? m : 5;
-        ChkInterval.Text = interval.ToString();
-        try
-        {
-            Clipboard.SetText(Checker.SetupCommand(_chk.User, _chk.Password, sub, interval, ChkSites.Text.Replace("\r\n", "\n"), SpeedMin()));
-            ChkResultText("Команда скопирована. Вставьте её в консоль сервера в РФ под root и дождитесь «RW-CHECKER: готово» (около минуты), затем нажмите «проверить подключение».", "Green");
-        }
-        catch (Exception ex) { ChkResultText("Не удалось скопировать: " + ex.Message, "Red"); }
-    }
-
-    async void ChkTest_Click(object sender, RoutedEventArgs e)
-    {
-        StoreChk();
-        if (_chk.Host == "" || _chk.Password == "") { ChkResultText("Нужны адрес сервера и пароль.", "Red"); return; }
-        ChkResultText("подключаюсь…", "Dim");
-        try
-        {
-            var (rep, key) = await Checker.FetchAsync(_chk.Clone());
-            if (_chk.HostKey == "" && key != "") _chk.HostKey = key;
-            ShowChkKey();
-            if (rep == null) { ChkResultText("✓ подключено, но результата ещё нет — чекер не успел выполнить первую проверку.", "Amber"); return; }
-            FillConns(rep.Results.Select(r => r.Name));
-            if (rep.Error != "") { ChkResultText("✓ подключено · чекер сообщает об ошибке: " + rep.Error, "Amber"); return; }
-            var l = rep.Results.Where(r => r.Ok != null).ToList();
-            int ok = l.Count(r => r.Ok == true);
-            var bad = l.Where(r => r.Ok == false).Select(r => r.Name).ToList();
-            var siteBad = l.SelectMany(r => r.Sites.Where(s => !s.Ok).Select(s => s.Name)).Distinct().ToList();
-            var text = $"✓ подключено · сервер {rep.Server}, проверка от {rep.CheckedAt.ToLocalTime():dd.MM HH:mm}: работают {ok} из {l.Count}"
-                       + (bad.Count > 0 ? " · не работают: " + string.Join(", ", bad) : "")
-                       + (siteBad.Count > 0 ? " · не открываются: " + string.Join(", ", siteBad) : "");
-            if (rep.BaselineMbps is double bl) text += $" · канал сервера {bl:0} Мбит/с";
-            if (rep.Version < 4) text += ". На сервере старая версия чекера — выполните команду установки ещё раз.";
-            ChkResultText(text, bad.Count == 0 && siteBad.Count == 0 && rep.Version >= 4 ? "Green" : "Amber");
-        }
-        catch (Exception ex) { ChkResultText("✗ " + ex.Message, "Red"); }
-    }
-
-    void ChkResetKey_Click(object sender, RoutedEventArgs e)
-    {
-        _chk.HostKey = "";
-        ShowChkKey();
-    }
-
     // ---- сохранение ----
     void Save_Click(object sender, RoutedEventArgs e)
     {
@@ -340,14 +208,6 @@ public partial class SettingsWindow : Window
         _s.IntervalSec = int.TryParse(Interval.Text, out var v) && v >= 5 ? v : 30;
         _s.OnlineWindowSec = int.TryParse(OnlineBox.Text, out var w) && w >= 30 ? w : 300;
         _s.SshServers = _servers.Select(x => x.Clone()).ToList();
-        StoreChk();
-        _s.Checker = _chk.Clone();
-        _s.CheckerEnabled = ChkEnabled.IsChecked == true;
-        _s.CheckerTestUser = ChkUser.Text.Trim();
-        _s.CheckerIntervalMin = int.TryParse(ChkInterval.Text.Trim(), out var ci) && ci is >= 2 and <= 60 ? ci : 5;
-        _s.CheckerSites = ChkSites.Text.Replace("\r\n", "\n").Trim();
-        _s.CheckerSpeedMin = SpeedMin();
-        _s.CheckerExcluded = _connBoxes.Where(b => b.IsChecked != true).Select(b => (string)b.Tag).ToList();
         _s.MetricsUrl = MetricsUrlBox.Text.Trim();
         _s.MetricsUser = MetricsUserBox.Text.Trim();
         _s.MetricsPass = MetricsPassBox.Password;
@@ -358,7 +218,6 @@ public partial class SettingsWindow : Window
         _s.TgChatId = TgChatBox.Text.Trim();
         _s.TgProxy = TgProxyBox.Text.Trim();
         _s.TgNodes = TgNodesBox.IsChecked == true;
-        _s.TgServices = TgServicesBox.IsChecked == true;
         _s.TgLimits = TgLimitsBox.IsChecked == true;
         _s.TgBilling = TgBillingBox.IsChecked == true;
         _s.TgUpdates = TgUpdatesBox.IsChecked == true;
@@ -370,7 +229,6 @@ public partial class SettingsWindow : Window
         _s.ProbeEnabled = ProbeBox.IsChecked == true;
         _s.RuCheckEnabled = RuBox.IsChecked == true;
         _s.ProbePort = int.TryParse(ProbePortBox.Text, out var pp) && pp is >= 0 and <= 65535 ? pp : 443;
-        _s.ServicesText = ServicesBox.Text.Replace("\r\n", "\n").Trim();
         _s.Theme = LightRb.IsChecked == true ? "light" : "dark";
         try { AutoRun.Set(AutoBox.IsChecked == true); }
         catch (Exception ex) { MessageBox.Show("Автозапуск: " + ex.Message); }

@@ -19,7 +19,7 @@ public class Incident
 
 public record IncidentRow(string Time, string Subject, string Text, string Status, string Level, bool Active, bool Unread);
 
-// Журнал событий: падения и восстановления нод и сайтов, хранится в %APPDATA%\RemnawaveMonitor\incidents.json
+// Журнал событий: падения и восстановления нод, хранится в %APPDATA%\RemnawaveMonitor\incidents.json
 public class IncidentLog
 {
     static string FilePath => Path.Combine(Settings.DataDir, "incidents.json");

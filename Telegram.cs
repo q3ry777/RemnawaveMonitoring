@@ -24,15 +24,14 @@ public class TelegramService
     static readonly (string cmd, string desc)[] Commands =
     {
         ("status", "сводка"), ("nodes", "подробности по нодам"), ("users", "кто сейчас онлайн"),
-        ("problems", "активные проблемы"), ("services", "сайты и сертификаты"), ("vpn", "проверка VPN из РФ"),
+        ("problems", "активные проблемы"),
         ("version", "версии панели, нод и программы"), ("help", "список команд"),
     };
 
     static readonly (string text, string cmd)[] Buttons =
     {
         ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
-        ("⚠️ Проблемы", "/problems"), ("🌐 Сайты", "/services"), ("🛡 VPN из РФ", "/vpn"),
-        ("ℹ️ Версии", "/version"),
+        ("⚠️ Проблемы", "/problems"), ("ℹ️ Версии", "/version"),
     };
 
     static string Norm(string s) => s.Replace("\uFE0F", "").Trim();
@@ -43,8 +42,7 @@ public class TelegramService
         keyboard = new[]
         {
             new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" },
-            new[] { "⚠️ Проблемы", "🌐 Сайты", "🛡 VPN из РФ" },
-            new[] { "ℹ️ Версии" },
+            new[] { "⚠️ Проблемы", "ℹ️ Версии" },
         },
         is_persistent = true,
         resize_keyboard = true,
@@ -54,7 +52,7 @@ public class TelegramService
     const string Help =
         "Команды (или кнопки внизу):\n" +
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн\n/problems — активные проблемы\n" +
-        "/services — сайты и сертификаты\n/vpn — проверка VPN из РФ\n/version — версии";
+        "/version — версии";
 
     public static HttpClient CreateClient(string proxy)
     {

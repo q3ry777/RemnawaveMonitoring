@@ -44,8 +44,6 @@ public class Settings
     public bool ProbeEnabled { get; set; } = true;
     public bool RuCheckEnabled { get; set; } = true;
     public int ProbePort { get; set; } = 443;
-    public string ServicesText { get; set; } =
-        "https://www.broken-tech.ru\nhttps://status.broken-tech.ru\nhttps://chat.broken-tech.ru\nhttps://bforum.broken-tech.ru\nhttps://mail.broken-tech.ru\nhttps://admin.broken-tech.ru";
 
     public DateTime? MonitorSince { get; set; }
     public bool TgEnabled { get; set; }
@@ -54,7 +52,6 @@ public class Settings
     public string TgChatId { get; set; } = "";
     public string TgProxy { get; set; } = "";
     public bool TgNodes { get; set; } = true;
-    public bool TgServices { get; set; } = true;
     public bool TgLimits { get; set; } = true;
     public bool TgBilling { get; set; } = true;
     public bool TgUpdates { get; set; } = true;
@@ -141,7 +138,7 @@ public class Settings
 
     public List<SshServer> SshServers { get; set; } = new();
 
-    // Отключённые уведомления: «node:<имя ноды>|<вид>» и «site:<адрес сайта>|site»
+    // Отключённые уведомления: «node:<имя ноды>|<вид>»
     public List<string> Muted { get; set; } = new();
 
     public static readonly (string cat, string label, string shortLabel)[] NodeMuteCats =
@@ -149,8 +146,6 @@ public class Settings
         ("node", "состояние ноды (не в сети, Xray)", "состояние"),
         ("reach", "доступность с этого ПК", "с ПК"),
         ("ru", "доступность из РФ (check-host)", "из РФ"),
-        ("vpn", "VPN из РФ (xray-чекер)", "VPN"),
-        ("sites", "сайты через VPN (YouTube, ChatGPT и др.)", "сайты"),
         ("bill", "оплата сервера", "оплата"),
     };
 
@@ -161,16 +156,6 @@ public class Settings
         var k = scope + "|" + cat;
         if (!Muted.Remove(k)) Muted.Add(k);
     }
-
-    // Xray-чекер на сервере в РФ
-    public bool CheckerEnabled { get; set; }
-    public string CheckerTestUser { get; set; } = "";
-    public int CheckerIntervalMin { get; set; } = 5;
-    public int CheckerSpeedMin { get; set; } = 60;   // замер скорости через подключения, раз в N минут (0 — выключен)
-    public List<string> CheckerExcluded { get; set; } = new();   // подключения, которые не показываем и по которым не тревожим
-    public string CheckerSites { get; set; } =
-        "YouTube https://www.youtube.com/generate_204\nInstagram https://www.instagram.com/\nChatGPT https://api.openai.com/v1/models";
-    public SshServer Checker { get; set; } = new() { Node = "xray-чекер", User = "rwcheck" };
 
     public string MetricsUrl { get; set; } = "";
     public string MetricsUser { get; set; } = "";
@@ -200,13 +185,12 @@ public class Settings
             s.UpdateToken = Secret.Unprotect(s.UpdateTokenEnc);
             s.TgToken = Secret.Unprotect(s.TgTokenEnc);
             foreach (var x in s.SshServers) x.Password = Secret.Unprotect(x.PasswordEnc);
-            s.Checker ??= new SshServer { Node = "xray-чекер", User = "rwcheck" };
-            s.Checker.Password = Secret.Unprotect(s.Checker.PasswordEnc);
             if (s.ApiToken == "" && !string.IsNullOrEmpty(s.Token))
             {
                 s.ApiToken = s.Token!;   // миграция со старой версии
                 s.Save();
             }
+            s.Muted.RemoveAll(m => m.StartsWith("site:") || m.EndsWith("|vpn") || m.EndsWith("|sites"));
             s.Token = null;
             return s;
         }
@@ -221,7 +205,6 @@ public class Settings
         UpdateTokenEnc = Secret.Protect(UpdateToken);
         TgTokenEnc = Secret.Protect(TgToken);
         foreach (var x in SshServers) x.PasswordEnc = Secret.Protect(x.Password);
-        Checker.PasswordEnc = Secret.Protect(Checker.Password);
         Directory.CreateDirectory(Dir);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this));
     }
@@ -242,7 +225,7 @@ public record NodeRow(
     string PingText = "", string PingLevel = "", string BillingText = "", string BillingLevel = "",
     string RuText = "", string RuLevel = "", string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
     double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "",
-    string SrvCpuNote = "", string VpnText = "", string VpnLevel = "", string VpnTip = "", string MutedText = "", string NodeUuid = "")
+    string SrvCpuNote = "", string MutedText = "", string NodeUuid = "")
 {
     // Нагрузка сервера: CPU и диск — только по SSH; память — по SSH, а без него — из панели
     static string Lvl(double v, double warn, double crit) => v < 0 ? "none" : v >= crit ? "crit" : v >= warn ? "warn" : "ok";
