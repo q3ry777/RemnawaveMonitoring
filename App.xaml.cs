@@ -34,11 +34,9 @@ public partial class App : Application
     IncidentsWindow? _journal;
     bool _balloonIncident;
     DateTime _balloonShownAt = DateTime.MinValue;
-    readonly DispatcherTimer _ruTimer = new();
     readonly DispatcherTimer _relTimer = new();
-    readonly Dictionary<string, (string text, string level)> _ru = new();
     string? _latestNode, _latestBackend, _panelVersion;
-    bool _ruBusy, _verSeeded;
+    bool _verSeeded;
     readonly Dictionary<string, int> _strikes = new();
     Forms.NotifyIcon _tray = null!;
     MainWindow _win = null!;
@@ -143,10 +141,6 @@ public partial class App : Application
         _timer.Interval = TimeSpan.FromSeconds(_s.IntervalSec);
         _timer.Start();
 
-        _ruTimer.Tick += async (_, _) => await RefreshRu();
-        _ruTimer.Interval = TimeSpan.FromMinutes(10);
-        _ruTimer.Start();
-
         _sshTimer.Tick += async (_, _) => await RefreshSsh();
         _sshTimer.Interval = TimeSpan.FromSeconds(60);
         _sshTimer.Start();
@@ -208,7 +202,6 @@ public partial class App : Application
         {
             var (u, n, m, b) = await _api.FetchAsync(_s);
             var snap = SnapshotBuilder.Build(u, n, _s, m, b);
-            snap = await WithProbes(snap);
             snap = ApplyExtras(snap);
             bool firstSnap = _prev == null;
             Directory.CreateDirectory(Path.GetDirectoryName(Settings.CachePath)!);
@@ -220,7 +213,6 @@ public partial class App : Application
             _prev = snap;
             _win.Update(snap);
             RefreshChip();
-            if (firstSnap) _ = RefreshRu();
             if (_ipFirst) { _ipFirst = false; _ = RefreshIps(); }
             _win.SetOffline(null);
         }
@@ -233,24 +225,6 @@ public partial class App : Application
             _win.SetOffline(ex.Message);
         }
         finally { _busy = false; _win.SetBusy(false); }
-    }
-
-    // ping и TCP-порт каждой ноды с этого компьютера
-    async Task<Snapshot> WithProbes(Snapshot s)
-    {
-        if (!_s.ProbeEnabled) return s;
-        int port = _s.ProbePort;
-        var tasks = s.Nodes.Select(async n =>
-        {
-            if (n.Address == "") return n;
-            var (icmp, tcp) = await NodeProbe.RunAsync(n.Address, port);
-            var parts = new List<string> { icmp is int ms ? $"ping {ms} мс" : "ping ✗" };
-            if (port > 0) parts.Add(tcp != null ? $":{port} ✓" : $":{port} ✗");
-            bool unreachable = port > 0 ? tcp == null : icmp == null;
-            string level = unreachable ? "bad" : icmp is > 200 ? "warn" : "ok";
-            return n with { PingText = string.Join(" · ", parts), PingLevel = level };
-        }).ToList();
-        return s with { Nodes = (await Task.WhenAll(tasks)).ToList() };
     }
 
     // ---- обновление самой программы (релизы приватного репозитория) ----
@@ -306,13 +280,12 @@ public partial class App : Application
             var parts = new List<string>();
             if (n.NodeVersion != "") parts.Add(old ? $"node {n.NodeVersion} → {latest}" : $"node {n.NodeVersion}");
             if (n.XrayVersion != "") parts.Add($"xray {n.XrayVersion}");
-            var ru = _ru.TryGetValue(n.Name, out var r) ? r : ("", "");
             ServerStats? st = null;
             string sshErr = "";
             if (_srv.TryGetValue(n.Name, out var sr)) { st = sr.stats; sshErr = sr.error ?? ""; }
             return n with
             {
-                VersionText = string.Join(" · ", parts), VersionLevel = old ? "warn" : "", RuText = ru.Item1, RuLevel = ru.Item2,
+                VersionText = string.Join(" · ", parts), VersionLevel = old ? "warn" : "",
                 SrvCpu = st?.Cpu ?? -1, SrvRam = st?.Ram ?? -1, SrvDisk = st?.Disk ?? -1,
                 SrvRamText = st?.RamText ?? "", SrvDiskText = st?.DiskText ?? "",
                 SrvNote = sshErr != "" ? "ssh: " + sshErr : "",
@@ -441,40 +414,6 @@ public partial class App : Application
         _win.Update(_prev);
     }
 
-    // Проверка нод из России: раз в 10 минут, по одной, чтобы не упереться в лимиты check-host.net
-    async Task RefreshRu()
-    {
-        if (_ruBusy || !_s.RuCheckEnabled || _prev == null) return;
-        _ruBusy = true;
-        try
-        {
-            int port = _s.ProbePort > 0 ? _s.ProbePort : 443;
-            foreach (var n in _prev.Nodes.Where(x => x.Address != "" && x.Connected).ToList())
-            {
-                try
-                {
-                    if (await RuCheck.CheckAsync(n.Address, port) is { } v)
-                    {
-                        string level = v.ok == v.total ? "ok" : v.ok == 0 ? "bad" : "warn";
-                        _ru[n.Name] = ($"из РФ {v.ok}/{v.total}" + (v.ok > 0 ? $" · {v.avgMs} мс" : ""), level);
-                        Track(n.Name + "|ru", n.Name, level == "bad", false,
-                            $"Нода {n.Name} недоступна из России (0 из {v.total} точек) — возможна блокировка",
-                            $"Нода {n.Name} снова доступна из России");
-                    }
-                }
-                catch { }
-                await Task.Delay(2000);
-            }
-            SyncJournalUi();
-            if (_prev != null)
-            {
-                _prev = ApplyExtras(_prev);
-                _win.Update(_prev);
-            }
-        }
-        finally { _ruBusy = false; }
-    }
-
     // Новые версии панели и нод (GitHub-релизы Remnawave)
     async Task RefreshReleases()
     {
@@ -531,15 +470,9 @@ public partial class App : Application
     void Notify(Snapshot s)
     {
         bool seed = _prev == null;
-        // если с этого ПК недоступны ВСЕ ноды — скорее всего проблема у вас, а не у нод
-        bool anyReachable = s.Nodes.Any(x => x.PingLevel is "ok" or "warn");
         foreach (var n in s.Nodes)
         {
             Track(n.Name + "|conn", n.Name, !n.Connected, seed, $"Нода {n.Name} не в сети", $"Нода {n.Name} снова в сети");
-            if (n.Connected)
-                Track(n.Name + "|xray", n.Name, !n.XrayOk, seed, $"Xray остановлен на {n.Name}", $"Xray на {n.Name} снова работает");
-            Track(n.Name + "|reach", n.Name, n.Connected && n.PingLevel == "bad" && anyReachable, seed,
-                $"Нода {n.Name} недоступна с вашего ПК (панель считает её рабочей)", $"Нода {n.Name} снова доступна с вашего ПК");
             Track(n.Name + "|bill", n.Name, n.BillingLevel == "crit", false, $"{n.Name}: {n.BillingText}", "");
         }
         SyncJournalUi();
@@ -615,9 +548,8 @@ public partial class App : Application
                     : new[] { n.MemPctText != "" ? $"RAM {n.MemPctText} ({n.MemText})" : "", n.Cpu != "—" ? n.Cpu : "", n.Load })
                 .Where(x => x != "");
             var l3 = new[] { n.Down, n.Up, n.Xray }.Where(x => x != "");
-            var l5 = new[] { n.PingText, n.RuText }.Where(x => x != "");
             foreach (var line in new[] { string.Join(" · ", l2), string.Join(" · ", l3),
-                         n.TrafficText != "—" ? "трафик " + n.TrafficText : "", string.Join(" · ", l5), n.BillingText })
+                         n.TrafficText != "—" ? "трафик " + n.TrafficText : "", n.BillingText })
                 if (line != "") sb.AppendLine("   " + line);
         }
         return sb.ToString().TrimEnd();
@@ -753,7 +685,7 @@ public partial class App : Application
         if (_prev != null)
         {
             sb.AppendLine("Ноды");
-            foreach (var n in _prev.Nodes) sb.AppendLine("• " + Line(n.Name, new[] { "|conn", "|xray" }));
+            foreach (var n in _prev.Nodes) sb.AppendLine("• " + Line(n.Name, new[] { "|conn" }));
         }
         return sb.ToString().TrimEnd();
     }
@@ -790,7 +722,7 @@ public partial class App : Application
             sb.AppendLine(su == DateTime.MaxValue ? "🔕 Не беспокоить: тихие часы на весь день" : $"🔕 Не беспокоить до {Settings.WhenText(su)}");
         foreach (var n in s.Nodes)
             sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {n.Name} · онлайн {n.UsersOnline}"
-                          + (n.SrvCpu >= 0 ? $" · CPU {n.CpuPctText}" : "") + (n.RamPctText != "—" ? $" · RAM {n.RamPctText}" : "") + (n.PingText != "" ? $" · {n.PingText}" : ""));
+                          + (n.SrvCpu >= 0 ? $" · CPU {n.CpuPctText}" : "") + (n.RamPctText != "—" ? $" · RAM {n.RamPctText}" : ""));
         sb.Append($"Активных проблем: {_log.Active} · обновлено {s.At:HH:mm:ss}");
         return sb.ToString();
     }
@@ -811,9 +743,7 @@ public partial class App : Application
         var kind = key[(bar + 1)..];
         switch (kind)
         {
-            case "conn": case "xray": return _s.IsMuted("node:" + head, "node");
-            case "reach": return _s.IsMuted("node:" + head, "reach");
-            case "ru": return _s.IsMuted("node:" + head, "ru");
+            case "conn": return _s.IsMuted("node:" + head, "node");
             case "bill": return _s.IsMuted("node:" + head, "bill");
             default: return false;
         }

@@ -39,10 +39,6 @@ public partial class SettingsWindow : Window
         if (_servers.Count > 0) SrvList.SelectedIndex = 0;
         else { SrvEmpty.Visibility = Visibility.Visible; SrvBlock.Visibility = Visibility.Collapsed; }
 
-        // проверки
-        ProbeBox.IsChecked = s.ProbeEnabled;
-        RuBox.IsChecked = s.RuCheckEnabled;
-        ProbePortBox.Text = s.ProbePort.ToString();
 
         // telegram
         TgBox.IsChecked = s.TgEnabled;
@@ -83,7 +79,7 @@ public partial class SettingsWindow : Window
     void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton rb || rb.Tag is not string page) return;
-        foreach (var name in new[] { "PagePanel", "PageSsh", "PageChecks", "PageTg", "PageUpdates", "PageMetrics", "PageGeneral" })
+        foreach (var name in new[] { "PagePanel", "PageSsh", "PageTg", "PageUpdates", "PageMetrics", "PageGeneral" })
             if (FindName(name) is UIElement el)
                 el.Visibility = name == page ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -226,9 +222,6 @@ public partial class SettingsWindow : Window
         _s.TgDndUntil = _s.TgDnd ? Settings.NextAt(dnd) : null;
         _s.TgQuietHours = SelectedHours();
         _s.TgQuietEnabled = TgQuietBox.IsChecked == true && _s.TgQuietHours.Count > 0;
-        _s.ProbeEnabled = ProbeBox.IsChecked == true;
-        _s.RuCheckEnabled = RuBox.IsChecked == true;
-        _s.ProbePort = int.TryParse(ProbePortBox.Text, out var pp) && pp is >= 0 and <= 65535 ? pp : 443;
         _s.Theme = LightRb.IsChecked == true ? "light" : "dark";
         try { AutoRun.Set(AutoBox.IsChecked == true); }
         catch (Exception ex) { MessageBox.Show("Автозапуск: " + ex.Message); }

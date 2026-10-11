@@ -88,7 +88,6 @@
                 </TextBlock>
                 <RadioButton GroupName="nav" Tag="PagePanel" Content="панель" Style="{StaticResource NavItem}" IsChecked="True" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageSsh" Content="серверы · SSH" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
-                <RadioButton GroupName="nav" Tag="PageChecks" Content="проверки нод" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageTg" Content="telegram" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageUpdates" Content="обновления" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageMetrics" Content="метрики" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
@@ -192,20 +191,6 @@
                             </Border>
                         </StackPanel>
                     </Grid>
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- ===== проверки нод ===== -->
-            <ScrollViewer x:Name="PageChecks" Style="{StaticResource Page}">
-                <StackPanel Margin="30,24,30,20">
-                    <TextBlock Text="проверки нод" Style="{StaticResource PageTitle}"/>
-                    <TextBlock Text="Доступность каждой ноды с этого компьютера и из России." Style="{StaticResource PageDesc}"/>
-                    <CheckBox x:Name="ProbeBox" Style="{StaticResource Check}" Content="проверять ping и порт каждой ноды"/>
-                    <CheckBox x:Name="RuBox" Style="{StaticResource Check}" Margin="0,12,0,0"
-                              Content="проверять доступность из России (check-host.net)"
-                              ToolTip="раз в 10 минут адрес и порт каждой ноды отправляются на check-host.net"/>
-                    <TextBlock Text="ПОРТ ДЛЯ ПРОВЕРКИ (0 — только ping)" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="ProbePortBox" Style="{StaticResource Input}" Width="160" HorizontalAlignment="Left"/>
                 </StackPanel>
             </ScrollViewer>
 

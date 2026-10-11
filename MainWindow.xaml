@@ -306,15 +306,13 @@
                                                 <TextBlock Grid.Column="4" Text="{Binding Down}" FontSize="12" Foreground="{DynamicResource Green}" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="5" Text="{Binding Up}" FontSize="12" Foreground="{DynamicResource Amber}" VerticalAlignment="Center"/>
                                             </Grid>
-                                            <!-- строка 3: доступность, версии и оплата -->
+                                            <!-- строка 3: версии и оплата -->
                                             <Grid Margin="0,8,0,0">
                                                 <Grid.Style>
                                                     <Style TargetType="Grid">
                                                         <Style.Triggers>
                                                             <MultiDataTrigger>
                                                                 <MultiDataTrigger.Conditions>
-                                                                    <Condition Binding="{Binding PingText}" Value=""/>
-                                                                    <Condition Binding="{Binding RuText}" Value=""/>
                                                                     <Condition Binding="{Binding VersionText}" Value=""/>
                                                                     <Condition Binding="{Binding BillingText}" Value=""/>
                                                                 </MultiDataTrigger.Conditions>
@@ -324,32 +322,9 @@
                                                     </Style>
                                                 </Grid.Style>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="165"/><ColumnDefinition Width="145"/>
-                                                    <ColumnDefinition Width="260"/><ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="1" Text="{Binding PingText}" FontSize="12">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding PingLevel}" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></DataTrigger>
-                                                                <DataTrigger Binding="{Binding PingLevel}" Value="bad"><Setter Property="Foreground" Value="{DynamicResource Red}"/></DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <TextBlock Grid.Column="2" Text="{Binding RuText}" FontSize="12">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding RuLevel}" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></DataTrigger>
-                                                                <DataTrigger Binding="{Binding RuLevel}" Value="bad"><Setter Property="Foreground" Value="{DynamicResource Red}"/></DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <TextBlock Grid.Column="3" Text="{Binding VersionText}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,0,10,0">
+                                                <TextBlock Grid.Column="1" Text="{Binding VersionText}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,0,10,0">
                                                     <TextBlock.Style>
                                                         <Style TargetType="TextBlock">
                                                             <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
@@ -359,7 +334,7 @@
                                                         </Style>
                                                     </TextBlock.Style>
                                                 </TextBlock>
-                                                <TextBlock Grid.Column="4" Text="{Binding BillingText}" FontSize="12" TextTrimming="CharacterEllipsis">
+                                                <TextBlock Grid.Column="2" Text="{Binding BillingText}" FontSize="12" TextTrimming="CharacterEllipsis">
                                                     <TextBlock.Style>
                                                         <Style TargetType="TextBlock">
                                                             <Setter Property="Foreground" Value="{DynamicResource Dim}"/>

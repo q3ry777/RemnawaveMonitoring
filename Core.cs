@@ -41,9 +41,6 @@ public class Settings
     public double Width { get; set; } = 900;
     public double Height { get; set; } = 560;
 
-    public bool ProbeEnabled { get; set; } = true;
-    public bool RuCheckEnabled { get; set; } = true;
-    public int ProbePort { get; set; } = 443;
 
     public DateTime? MonitorSince { get; set; }
     public bool TgEnabled { get; set; }
@@ -143,9 +140,7 @@ public class Settings
 
     public static readonly (string cat, string label, string shortLabel)[] NodeMuteCats =
     {
-        ("node", "состояние ноды (не в сети, Xray)", "состояние"),
-        ("reach", "доступность с этого ПК", "с ПК"),
-        ("ru", "доступность из РФ (check-host)", "из РФ"),
+        ("node", "отключение ноды (не в сети)", "состояние"),
         ("bill", "оплата сервера", "оплата"),
     };
 
@@ -190,7 +185,7 @@ public class Settings
                 s.ApiToken = s.Token!;   // миграция со старой версии
                 s.Save();
             }
-            s.Muted.RemoveAll(m => m.StartsWith("site:") || m.EndsWith("|vpn") || m.EndsWith("|sites"));
+            s.Muted.RemoveAll(m => m.StartsWith("site:") || m.EndsWith("|vpn") || m.EndsWith("|sites") || m.EndsWith("|reach") || m.EndsWith("|ru"));
             s.Token = null;
             return s;
         }
@@ -222,8 +217,8 @@ public record NodeRow(
     string Load, string Down, string Up,
     string TrafficText, bool HasLimit, double TrafficPct, string TrafficLevel,
     int UsersOnline, bool Connected, bool XrayOk, string Address,
-    string PingText = "", string PingLevel = "", string BillingText = "", string BillingLevel = "",
-    string RuText = "", string RuLevel = "", string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
+    string BillingText = "", string BillingLevel = "",
+    string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
     double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "",
     string SrvCpuNote = "", string MutedText = "", string NodeUuid = "")
 {
