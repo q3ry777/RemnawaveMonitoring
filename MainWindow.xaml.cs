@@ -26,7 +26,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         SourceInitialized += (_, _) => WinChrome.Apply(this);
         _s = s; _openSettings = openSettings; _refresh = refresh;
-        Width = s.Width; Height = s.Height;
+        RestorePlacement();
         _debounce.Tick += (_, _) => { _debounce.Stop(); Apply(); };
         UpdateHeaders();
         VersionBadge.Text = "V" + Updater.CurrentText;
@@ -286,9 +286,53 @@ public partial class MainWindow : Window
         App.ApplyTheme(_s.Theme);
     }
 
+    // ---- положение и размер окна: восстанавливаются при запуске, сохраняются через секунду после изменения ----
+    readonly DispatcherTimer _placeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    bool _placeReady;
+
+    void RestorePlacement()
+    {
+        Width = Math.Max(MinWidth, _s.Width); Height = Math.Max(MinHeight, _s.Height);
+        // позиция применяется, только если окно хотя бы частично попадает на один из текущих мониторов
+        if (_s.Left is double l && _s.Top is double t)
+        {
+            var vs = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                              SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+            var title = new Rect(l + 40, t, Math.Max(1, Width - 80), 30);   // заголовок должен быть виден, чтобы окно можно было перетащить
+            if (vs.IntersectsWith(title))
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                Left = l; Top = t;
+            }
+        }
+        if (_s.Maximized) WindowState = WindowState.Maximized;
+        _placeTimer.Tick += (_, _) => { _placeTimer.Stop(); SavePlacement(); };
+        LocationChanged += (_, _) => PlacementChanged();
+        SizeChanged += (_, _) => PlacementChanged();
+        StateChanged += (_, _) => PlacementChanged();
+        ContentRendered += (_, _) => _placeReady = true;
+    }
+
+    void PlacementChanged()
+    {
+        if (!_placeReady || WindowState == WindowState.Minimized) return;
+        _placeTimer.Stop(); _placeTimer.Start();
+    }
+
+    public void SavePlacement()
+    {
+        if (!_placeReady || WindowState == WindowState.Minimized) return;
+        var r = WindowState == WindowState.Normal ? new Rect(Left, Top, ActualWidth, ActualHeight) : RestoreBounds;
+        if (r.IsEmpty || r.Width <= 0) return;
+        _s.Left = r.Left; _s.Top = r.Top; _s.Width = r.Width; _s.Height = r.Height;
+        _s.Maximized = WindowState == WindowState.Maximized;
+        _s.Save();
+    }
+
     protected override void OnClosing(CancelEventArgs e)
     {
-        _s.Width = ActualWidth; _s.Height = ActualHeight; _s.Save();
+        _placeTimer.Stop();
+        SavePlacement();
         e.Cancel = true;
         Hide();
     }

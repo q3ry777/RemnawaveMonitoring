@@ -40,6 +40,9 @@ public class Settings
     public string Theme { get; set; } = "dark";
     public double Width { get; set; } = 900;
     public double Height { get; set; } = 560;
+    public double? Left { get; set; }
+    public double? Top { get; set; }
+    public bool Maximized { get; set; }
 
 
     public DateTime? MonitorSince { get; set; }

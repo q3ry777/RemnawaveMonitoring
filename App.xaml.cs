@@ -123,7 +123,7 @@ public partial class App : Application
         menu.Items.Add("Журнал событий", null, (_, _) => OpenJournal());
         menu.Items.Add("Отметить прочитанным", null, (_, _) => AckAll());
         menu.Items.Add("Настройки", null, (_, _) => OpenSettings());
-        menu.Items.Add("Выход", null, (_, _) => { _tray.Visible = false; Shutdown(); });
+        menu.Items.Add("Выход", null, (_, _) => { _win.SavePlacement(); _tray.Visible = false; Shutdown(); });
         _tray = new Forms.NotifyIcon { Icon = _ok, Visible = true, Text = "Remnawave", ContextMenuStrip = menu };
         _tray.DoubleClick += (_, _) => ShowWin();
         // клик по уведомлению о проблеме открывает журнал и сбрасывает красную иконку
@@ -176,7 +176,9 @@ public partial class App : Application
     void ShowWin()
     {
         if (_win == null) return;
-        _win.Show(); _win.WindowState = WindowState.Normal; _win.Activate();
+        _win.Show();
+        if (_win.WindowState == WindowState.Minimized) _win.WindowState = _s.Maximized ? WindowState.Maximized : WindowState.Normal;
+        _win.Activate();
     }
 
     void OpenSettings()
@@ -259,6 +261,7 @@ public partial class App : Application
         {
             _win.SetStatus("загрузка обновления…");
             var path = await Updater.DownloadAsync(_s, u);
+            _win.SavePlacement();
             _s.Save();
             Updater.ApplyAndRestart(path);
             _tray.Visible = false;
