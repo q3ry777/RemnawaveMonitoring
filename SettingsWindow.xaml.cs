@@ -28,13 +28,15 @@ public partial class SettingsWindow : Window
         Interval.Text = s.IntervalSec.ToString();
         OnlineBox.Text = s.OnlineWindowSec.ToString();
 
-        // серверы: по одной записи на каждую ноду + сохранённые записи нод, которых уже нет в панели
-        foreach (var (name, addr) in nodes)
+        // серверы: только ноды, которые сейчас есть в панели. Записи удалённых из панели нод отбрасываются
+        // (при сохранении удаляются и из настроек). Пока панель не ответила — показываем сохранённые как есть.
+        var nodeList = nodes.ToList();
+        foreach (var (name, addr) in nodeList)
         {
             var saved = s.SshServers.FirstOrDefault(x => x.Node == name);
             _servers.Add(saved?.Clone() ?? new SshServer { Node = name, Host = addr });
         }
-        foreach (var x in s.SshServers.Where(x => _servers.All(y => y.Node != x.Node))) _servers.Add(x.Clone());
+        if (nodeList.Count == 0) foreach (var x in s.SshServers) _servers.Add(x.Clone());
         SrvList.ItemsSource = _servers;
         if (_servers.Count > 0) SrvList.SelectedIndex = 0;
         else { SrvEmpty.Visibility = Visibility.Visible; SrvBlock.Visibility = Visibility.Collapsed; }

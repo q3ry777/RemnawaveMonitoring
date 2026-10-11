@@ -220,7 +220,7 @@ public record NodeRow(
     string BillingText = "", string BillingLevel = "",
     string NodeVersion = "", string XrayVersion = "", string VersionText = "", string VersionLevel = "",
     double SrvCpu = -1, double SrvRam = -1, double SrvDisk = -1, string SrvRamText = "", string SrvDiskText = "", string SrvNote = "",
-    string SrvCpuNote = "", string MutedText = "", string NodeUuid = "")
+    string SrvCpuNote = "", string MutedText = "", string NodeUuid = "", string BillingShort = "")
 {
     // Нагрузка сервера: CPU и диск — только по SSH; память — по SSH, а без него — из панели
     static string Lvl(double v, double warn, double crit) => v < 0 ? "none" : v >= crit ? "crit" : v >= warn ? "warn" : "ok";
@@ -525,7 +525,7 @@ public static class SnapshotBuilder
                 ? $"{J.Bytes(tUsed)} / {(hasLimit ? J.Bytes(tLimit) : "∞")}"
                 : nodeTraffic.GetValueOrDefault(uuid, "—");
 
-            string billText = "", billLevel = "";
+            string billText = "", billLevel = "", billShort = "";
             if (billing.TryGetValue(uuid, out var bill))
             {
                 var left = bill.date - DateTimeOffset.UtcNow;
@@ -533,6 +533,7 @@ public static class SnapshotBuilder
                 billText = (left < TimeSpan.Zero ? "оплата просрочена" : days <= 0 ? "оплата сегодня" : $"оплата через {days} д")
                            + $" ({bill.date.ToLocalTime():dd.MM})" + (bill.provider != "" ? $" · {bill.provider}" : "");
                 billLevel = left < TimeSpan.Zero || days <= 3 ? "crit" : days <= 7 ? "warn" : "ok";
+                billShort = $"оплата {bill.date.ToLocalTime():dd.MM} · " + (left < TimeSpan.Zero ? "просрочена" : days <= 0 ? "сегодня" : $"{days} д");
             }
 
             nodes.Add(new NodeRow(
@@ -547,7 +548,7 @@ public static class SnapshotBuilder
                 rx > 0 || tx > 0 ? $"↑ {J.Compact(tx)}/с" : "",
                 trafficText, hasLimit, tPct, tLevel,
                 (int)J.N(n, "usersOnline"), connected, xrayOk, J.S(n, "address"), NodeUuid: uuid,
-                BillingText: billText, BillingLevel: billLevel,
+                BillingText: billText, BillingLevel: billLevel, BillingShort: billShort,
                 NodeVersion: J.FindS(n, "nodeVersion"), XrayVersion: J.FindS(n, "xrayVersion")));
         }
 

@@ -253,6 +253,31 @@
                                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                                     <Image Style="{StaticResource FlagImg}" Height="15" Source="{Binding Country, Converter={StaticResource Flag}}"/>
                                                     <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="14"/>
+                                                    <!-- оплата сервера: компактная плашка рядом с именем, полный текст — при наведении -->
+                                                    <Border BorderThickness="1" CornerRadius="10" Padding="8,1" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                            ToolTip="{Binding BillingText}">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding BillingShort}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                                    <DataTrigger Binding="{Binding BillingLevel}" Value="warn"><Setter Property="BorderBrush" Value="{DynamicResource Amber}"/></DataTrigger>
+                                                                    <DataTrigger Binding="{Binding BillingLevel}" Value="crit"><Setter Property="BorderBrush" Value="{DynamicResource Red}"/></DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock Text="{Binding BillingShort}" FontSize="11">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding BillingLevel}" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></DataTrigger>
+                                                                        <DataTrigger Binding="{Binding BillingLevel}" Value="crit"><Setter Property="Foreground" Value="{DynamicResource Red}"/></DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Border>
                                                     <TextBlock Text="{Binding MutedText}" FontSize="11" Foreground="{DynamicResource Dim}" Margin="10,0,0,0"
                                                                VerticalAlignment="Center" ToolTip="уведомления отключены (ПКМ по ноде — включить)"/>
                                                 </StackPanel>
@@ -306,7 +331,7 @@
                                                 <TextBlock Grid.Column="4" Text="{Binding Down}" FontSize="12" Foreground="{DynamicResource Green}" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="5" Text="{Binding Up}" FontSize="12" Foreground="{DynamicResource Amber}" VerticalAlignment="Center"/>
                                             </Grid>
-                                            <!-- строка 3: версии и оплата -->
+                                            <!-- строка 3: версии -->
                                             <Grid Margin="0,8,0,0">
                                                 <Grid.Style>
                                                     <Style TargetType="Grid">
@@ -314,7 +339,6 @@
                                                             <MultiDataTrigger>
                                                                 <MultiDataTrigger.Conditions>
                                                                     <Condition Binding="{Binding VersionText}" Value=""/>
-                                                                    <Condition Binding="{Binding BillingText}" Value=""/>
                                                                 </MultiDataTrigger.Conditions>
                                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                             </MultiDataTrigger>
@@ -322,7 +346,7 @@
                                                     </Style>
                                                 </Grid.Style>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="1" Text="{Binding VersionText}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,0,10,0">
                                                     <TextBlock.Style>
@@ -330,17 +354,6 @@
                                                             <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding VersionLevel}" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <TextBlock Grid.Column="2" Text="{Binding BillingText}" FontSize="12" TextTrimming="CharacterEllipsis">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding BillingLevel}" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></DataTrigger>
-                                                                <DataTrigger Binding="{Binding BillingLevel}" Value="crit"><Setter Property="Foreground" Value="{DynamicResource Red}"/></DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
                                                     </TextBlock.Style>
