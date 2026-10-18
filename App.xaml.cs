@@ -23,14 +23,7 @@ public partial class App : Application
     readonly Icon _ok = MakeIcon(Color.FromArgb(74, 222, 128));
     readonly Icon _bad = MakeIcon(Color.FromArgb(251, 73, 52));
     readonly HashSet<string> _alerted = new();
-    readonly IncidentLog _log = IncidentLog.Load();
-    readonly DispatcherTimer _sshTimer = new();
-    readonly Dictionary<string, (ServerStats? stats, string error)> _srv = new();
-    bool _sshBusy;
-    readonly Dictionary<string, (double total, double idle, DateTime at)> _cpuPrev = new();
-    readonly Dictionary<string, Queue<double>> _cpuHist = new();
-    readonly TelegramService _tg = new();
-    readonly DispatcherTimer _tgTimer = new();
+    readonly IncidentLog _log = IncidentLog.Load(Settings.DataDir);
     IncidentsWindow? _journal;
     bool _balloonIncident;
     DateTime _balloonShownAt = DateTime.MinValue;
@@ -105,19 +98,6 @@ public partial class App : Application
         _win.OpenJournalRequested = OpenJournal;
         _win.MutesChanged = ReapplyExtras;
 
-        _tg.Configure(_s);
-        _tg.Handler = HandleTg;
-        if (_s.MonitorSince == null) { _s.MonitorSince = DateTime.Now; _s.Save(); }
-        _tgTimer.Tick += async (_, _) =>
-        {
-            // время «не беспокоить» вышло — режим выключается сам
-            if (_s.TgDnd && !_s.TgDndActive) { _s.TgDnd = false; _s.TgDndUntil = null; _s.Save(); }
-            UpdateDndChip();
-            await _tg.TickAsync();
-        };
-        _tgTimer.Interval = TimeSpan.FromSeconds(5);
-        _tgTimer.Start();
-
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть", null, (_, _) => ShowWin());
         menu.Items.Add("Журнал событий", null, (_, _) => OpenJournal());
@@ -140,10 +120,6 @@ public partial class App : Application
         _timer.Tick += async (_, _) => await Refresh();
         _timer.Interval = TimeSpan.FromSeconds(_s.IntervalSec);
         _timer.Start();
-
-        _sshTimer.Tick += async (_, _) => await RefreshSsh();
-        _sshTimer.Interval = TimeSpan.FromSeconds(60);
-        _sshTimer.Start();
 
         _ipTimer.Tick += async (_, _) => await RefreshIps();
         _ipTimer.Interval = TimeSpan.FromMinutes(2);
@@ -170,7 +146,6 @@ public partial class App : Application
         _ = Refresh();
         _ = RefreshReleases();
         _ = CheckAppUpdateAsync();
-        _ = RefreshSsh();
     }
 
     void ShowWin()
@@ -183,16 +158,12 @@ public partial class App : Application
 
     void OpenSettings()
     {
-        var nodes = _prev?.Nodes.Select(n => (n.Name, n.Address)).ToList() ?? new List<(string, string)>();
-        var w = new SettingsWindow(_s, nodes);
+        var w = new SettingsWindow(_s);
         if (w.ShowDialog() != true) return;
         _s.Save();
-        _tg.Configure(_s);
-        UpdateDndChip();
         _timer.Interval = TimeSpan.FromSeconds(_s.IntervalSec);
         _ = Refresh(true);
         _ = CheckAppUpdateAsync();
-        _ = RefreshSsh();
     }
 
     async Task Refresh(bool manual = false)
@@ -220,11 +191,14 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            _win.SetStatus("нет связи");
-            _tray.Text = "Remnawave: нет связи с панелью";
-            Track("panel|offline", "Панель", true, false, $"Нет связи с панелью: {ex.Message}", "Связь с панелью восстановлена");
+            // Нет интернета у самого ПК (после сна, обрыв связи) — панель тут ни при чём: без тревоги
+            bool net = await Net.HasInternetAsync();
+            _win.SetStatus(net ? "нет связи" : "нет интернета");
+            _tray.Text = net ? "Remnawave: нет связи с панелью" : "Remnawave: нет интернета";
+            if (net)
+                Track("panel|offline", "Панель", true, false, $"Нет связи с панелью: {ex.Message}", "Связь с панелью восстановлена");
             SyncJournalUi();
-            _win.SetOffline(ex.Message);
+            _win.SetOffline(net ? ex.Message : "нет интернета на этом компьютере");
         }
         finally { _busy = false; _win.SetBusy(false); }
     }
@@ -242,8 +216,7 @@ public partial class App : Application
             if (_appUpdate != null && _appNotified != _appUpdate.Version)
             {
                 _appNotified = _appUpdate.Version;
-                Balloon($"Доступна новая версия программы: {_appUpdate.Version}. Нажмите «обновить» в шапке окна.", Forms.ToolTipIcon.Info,
-                    tgKind: "updates", tgText: $"⬆️ Доступна новая версия Remnawave Monitor: {_appUpdate.Version}");
+                Balloon($"Доступна новая версия программы: {_appUpdate.Version}. Нажмите «обновить» в шапке окна.", Forms.ToolTipIcon.Info);
             }
         }
         catch { /* нет сети или не настроен доступ — молча пробуем позже */ }
@@ -270,7 +243,7 @@ public partial class App : Application
         catch (Exception ex) { _win.SetStatus("не удалось обновить: " + ex.Message); }
     }
 
-    // Результаты проверки из РФ и версии накладываются на каждый снимок
+    // Версии, отключённые уведомления и IP накладываются на каждый снимок
     Snapshot ApplyExtras(Snapshot s)
     {
         string? maxNode = s.Nodes.Select(n => n.NodeVersion).Where(v => v != "")
@@ -283,16 +256,9 @@ public partial class App : Application
             var parts = new List<string>();
             if (n.NodeVersion != "") parts.Add(old ? $"node {n.NodeVersion} → {latest}" : $"node {n.NodeVersion}");
             if (n.XrayVersion != "") parts.Add($"xray {n.XrayVersion}");
-            ServerStats? st = null;
-            string sshErr = "";
-            if (_srv.TryGetValue(n.Name, out var sr)) { st = sr.stats; sshErr = sr.error ?? ""; }
             return n with
             {
                 VersionText = string.Join(" · ", parts), VersionLevel = old ? "warn" : "",
-                SrvCpu = st?.Cpu ?? -1, SrvRam = st?.Ram ?? -1, SrvDisk = st?.Disk ?? -1,
-                SrvRamText = st?.RamText ?? "", SrvDiskText = st?.DiskText ?? "",
-                SrvNote = sshErr != "" ? "ssh: " + sshErr : "",
-                SrvCpuNote = st == null ? "" : CpuNote(st),
                 MutedText = MutedLabel(n.Name),
             };
         }).ToList();
@@ -307,41 +273,6 @@ public partial class App : Application
         }).ToList();
         return s with { Nodes = nodes, Users = users };
     }
-
-    // Загрузка CPU, память и диск серверов нод по SSH (раз в минуту, все серверы параллельно)
-    async Task RefreshSsh()
-    {
-        if (_sshBusy) return;
-        var list = _s.SshServers.Where(x => x.Enabled && x.Host != "" && x.Password != "").ToList();
-        foreach (var k in _srv.Keys.Where(k => list.All(x => x.Node != k)).ToList()) _srv.Remove(k);
-        if (list.Count == 0) { ReapplyExtras(); return; }
-
-        _sshBusy = true;
-        try
-        {
-            var results = await Task.WhenAll(list.Select(async srv =>
-            {
-                try
-                {
-                    var (st, key) = await SshStats.CollectAsync(srv.Clone());
-                    return new SshResult(srv, st, key, "");
-                }
-                catch (Exception ex) { return new SshResult(srv, null, "", ex.Message); }
-            }));
-
-            bool save = false;
-            foreach (var r in results)
-            {
-                _srv[r.Srv.Node] = (r.Stats == null ? null : AverageCpu(r.Srv.Node, r.Stats), r.Error);
-                if (r.Stats != null && r.Srv.HostKey == "" && r.Key != "") { r.Srv.HostKey = r.Key; save = true; }   // запоминаем ключ сервера
-            }
-            if (save) _s.Save();
-            ReapplyExtras();
-        }
-        finally { _sshBusy = false; }
-    }
-
-    record SshResult(SshServer Srv, ServerStats? Stats, string Key, string Error);
 
     // ---- IP активных подключений пользователей (раз в 2 минуты, только ноды с людьми онлайн) ----
     readonly DispatcherTimer _ipTimer = new();
@@ -380,36 +311,6 @@ public partial class App : Application
         finally { _ipBusy = false; }
     }
 
-    // Загрузка CPU — среднее за время между опросами (около минуты) по накопительным счётчикам /proc/stat.
-    // Короткий замер скрипта на многоядерных серверах слишком грубый: при слабой нагрузке он прыгает и часто даёт 0.
-    ServerStats AverageCpu(string node, ServerStats st)
-    {
-        var now = DateTime.Now;
-        if (!st.Legacy)
-        {
-            var res = st;
-            if (_cpuPrev.TryGetValue(node, out var p) && st.StatTotal > p.total && now - p.at < TimeSpan.FromMinutes(10))
-                res = st with
-                {
-                    Cpu = Math.Clamp(1 - (st.StatIdle - p.idle) / (st.StatTotal - p.total), 0, 1),
-                    CpuWindowSec = (int)Math.Round((now - p.at).TotalSeconds),
-                };
-            _cpuPrev[node] = (st.StatTotal, st.StatIdle, now);   // при перезагрузке сервера счётчики сбросятся — возьмём короткий замер
-            return res;
-        }
-
-        // старый скрипт на сервере (без счётчиков): сглаживаем по последним 5 замерам
-        if (!_cpuHist.TryGetValue(node, out var q)) _cpuHist[node] = q = new Queue<double>();
-        if (st.Cpu >= 0) { q.Enqueue(st.Cpu); while (q.Count > 5) q.Dequeue(); }
-        return q.Count > 0 ? st with { Cpu = q.Average(), CpuWindowSec = q.Count > 1 ? -q.Count : 0 } : st;
-    }
-
-    static string CpuNote(ServerStats st) =>
-        st.Legacy
-            ? "на сервере старый скрипт — выполните команду установки ещё раз (настройки → серверы)" +
-              (st.CpuWindowSec < 0 ? $" · среднее {-st.CpuWindowSec} замеров" : "")
-            : st.CpuWindowSec > 0 ? $"среднее за {st.CpuWindowSec} с" : "замер за 2 с";
-
     void ReapplyExtras()
     {
         if (_prev == null) return;
@@ -436,9 +337,9 @@ public partial class App : Application
             if (_verSeeded)
             {
                 if (back != null && back != _latestBackend && ReleaseCheck.Newer(back, _panelVersion))
-                    Balloon($"Вышла новая версия Remnawave: {back} (у вас {_panelVersion})", Forms.ToolTipIcon.Info, tgKind: "updates");
+                    Balloon($"Вышла новая версия Remnawave: {back} (у вас {_panelVersion})", Forms.ToolTipIcon.Info);
                 if (node != null && node != _latestNode && (_prev?.Nodes.Any(x => ReleaseCheck.Newer(node, x.NodeVersion)) ?? false))
-                    Balloon($"Вышла новая версия ноды Remnawave: {node}", Forms.ToolTipIcon.Info, tgKind: "updates");
+                    Balloon($"Вышла новая версия ноды Remnawave: {node}", Forms.ToolTipIcon.Info);
             }
             _verSeeded = true;
             if (node != null) _latestNode = node;
@@ -485,7 +386,7 @@ public partial class App : Application
     {
         int cur = _strikes.GetValueOrDefault(key);
         string severity = key.EndsWith("|bill") ? "warn" : "bad";
-        bool muted = IsMutedKey(key);   // отключено пользователем: в журнал пишем, но без всплывающих, Telegram и красной иконки
+        bool muted = IsMutedKey(key);   // отключено пользователем: в журнал пишем, но без всплывающих и красной иконки
         if (failing)
         {
             int next;
@@ -500,7 +401,7 @@ public partial class App : Application
                 if (next == 2)
                 {
                     _log.Open(key, subject, alarm + (muted ? " (уведомления отключены)" : ""), severity, unread: !muted);
-                    if (!muted) Balloon(alarm, Forms.ToolTipIcon.Warning, incident: true, tgKind: TgKind(key), tgText: "🔴 " + alarm);
+                    if (!muted) Balloon(alarm, Forms.ToolTipIcon.Warning, incident: true);
                 }
             }
             _strikes[key] = next;
@@ -511,230 +412,10 @@ public partial class App : Application
             {
                 var downtime = _log.Resolve(key);
                 if (recovered != "" && !muted)
-                    Balloon(recovered, Forms.ToolTipIcon.Info, tgKind: TgKind(key),
-                        tgText: "🟢 " + recovered + (downtime is TimeSpan d ? $" (простой {IncidentLog.Dur(d)})" : ""));
+                    Balloon(recovered + (downtime is TimeSpan d ? $" (простой {IncidentLog.Dur(d)})" : ""), Forms.ToolTipIcon.Info);
             }
             _strikes.Remove(key);
         }
-    }
-
-    // ---- Telegram: ответы на команды (только чтение) ----
-    const string NoData = "Данных пока нет: программа ещё не получила ответ панели.";
-
-    static string Flag(string cc) =>
-        cc.Length == 2 && cc.All(char.IsLetter)
-            ? string.Concat(cc.ToUpperInvariant().Select(c => char.ConvertFromUtf32(0x1F1E6 + (c - 'A')))) + " "
-            : "";
-
-    string? HandleTg(string cmd, string arg) => cmd switch
-    {
-        "/status" => BuildStatus(),
-        "/problems" => BuildProblems(),
-        "/nodes" => BuildNodes(),
-        "/users" => BuildUsers(),
-        "/version" => BuildVersion(),
-        _ => null,
-    };
-
-    string BuildNodes()
-    {
-        var s = _prev;
-        if (s == null) return NoData;
-        var sb = new StringBuilder();
-        sb.AppendLine($"🖥 Ноды ({s.Nodes.Count})");
-        foreach (var n in s.Nodes)
-        {
-            sb.AppendLine();
-            sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {Flag(n.Country)}{n.Name} · онлайн {n.UsersOnline}");
-            var l2 = (n.SrvCpu >= 0 || n.SrvRam >= 0 || n.SrvDisk >= 0
-                    ? new[] { $"CPU {n.CpuPctText}", $"RAM {n.RamPctText}", $"диск {n.DiskPctText}", n.Load }
-                    : new[] { n.MemPctText != "" ? $"RAM {n.MemPctText} ({n.MemText})" : "", n.Cpu != "—" ? n.Cpu : "", n.Load })
-                .Where(x => x != "");
-            var l3 = new[] { n.Down, n.Up, n.Xray }.Where(x => x != "");
-            foreach (var line in new[] { string.Join(" · ", l2), string.Join(" · ", l3),
-                         n.TrafficText != "—" ? "трафик " + n.TrafficText : "", n.BillingText })
-                if (line != "") sb.AppendLine("   " + line);
-        }
-        return sb.ToString().TrimEnd();
-    }
-
-    string BuildUsers()
-    {
-        var s = _prev;
-        if (s == null) return NoData;
-        var online = s.Users.Where(u => u.IsOnline).ToList();
-        if (online.Count == 0) return $"👥 Сейчас никого онлайн (всего пользователей: {s.Users.Count})";
-        var sb = new StringBuilder();
-        sb.AppendLine($"👥 Онлайн: {online.Count} из {s.Users.Count}");
-        foreach (var u in online)
-        {
-            sb.AppendLine($"• {u.Username} — {Flag(u.LastNodeCountry)}{u.LastNode}");
-            // все IP пользователя: адрес, нода, когда виден
-            if (u.IpTip != "")
-                foreach (var line in u.IpTip.Split('\n')) sb.AppendLine("     🌐 " + line);
-        }
-        return sb.ToString().TrimEnd();
-    }
-
-    string BuildTop()
-    {
-        var s = _prev;
-        if (s == null) return NoData;
-        var sb = new StringBuilder();
-        sb.AppendLine("📈 Топ-10 по трафику");
-        int i = 1;
-        foreach (var u in s.Users.OrderByDescending(x => x.TrafficBytes).Take(10))
-            sb.AppendLine($"{i++}. {u.Username} — {J.Bytes(u.TrafficBytes)} ({Flag(u.LastNodeCountry)}{u.LastNode})");
-        return sb.ToString().TrimEnd();
-    }
-
-    string BuildExpiring()
-    {
-        var s = _prev;
-        if (s == null) return NoData;
-        var list = s.Users.Where(u => u.ExpireLevel != "" || u.TrafficLevel != "ok")
-            .OrderByDescending(u => u.ExpireLevel == "crit" || u.TrafficLevel == "crit" ? 2 : 1).ThenBy(u => u.Username).ToList();
-        if (list.Count == 0) return "✅ Никто не упирается в лимит, подписки не истекают в ближайшие 7 дней";
-        var sb = new StringBuilder();
-        sb.AppendLine("⏳ Истекает или упирается в лимит");
-        foreach (var u in list)
-        {
-            var parts = new List<string>();
-            if (u.ExpireLevel != "") parts.Add($"подписка {u.ExpireNote}");
-            if (u.TrafficLevel != "ok") parts.Add($"трафик {u.TrafficPct:P0} лимита");
-            sb.AppendLine($"{(u.ExpireLevel == "crit" || u.TrafficLevel == "crit" ? "🔴" : "🟡")} {u.Username}: {string.Join(", ", parts)}");
-        }
-        return sb.ToString().TrimEnd();
-    }
-
-    string BuildUser(string q)
-    {
-        var s = _prev;
-        if (s == null) return NoData;
-        q = q.Trim();
-        var exact = s.Users.FirstOrDefault(u => u.Username.Equals(q, StringComparison.OrdinalIgnoreCase));
-        var found = exact != null ? new List<UserRow> { exact }
-            : s.Users.Where(u => u.Username.Contains(q, StringComparison.OrdinalIgnoreCase)).Take(9).ToList();
-        if (found.Count == 0) return $"Пользователь «{q}» не найден";
-        if (found.Count > 1)
-        {
-            var sb2 = new StringBuilder();
-            sb2.AppendLine("Найдено несколько, уточните имя:");
-            foreach (var f in found) sb2.AppendLine("• " + f.Username);
-            return sb2.ToString().TrimEnd();
-        }
-        var u = found[0];
-        var sb = new StringBuilder();
-        sb.AppendLine($"👤 {u.Username}");
-        sb.AppendLine($"Статус: {u.Status} · " + (u.IsOnline ? "онлайн сейчас" : u.Online == "—" ? "активности не было" : $"был онлайн {u.Online}"));
-        sb.AppendLine("Трафик: " + u.Traffic + (u.HasLimit ? $" ({u.TrafficPct:P0})" : ""));
-        if (u.ExpireNote != "") sb.AppendLine("Подписка: " + u.ExpireNote);
-        sb.Append($"Последняя нода: {Flag(u.LastNodeCountry)}{u.LastNode}");
-        return sb.ToString();
-    }
-
-    string BuildBilling()
-    {
-        var s = _prev;
-        if (s == null) return NoData;
-        var rows = s.Nodes.Where(n => n.BillingText != "")
-            .OrderBy(n => n.BillingLevel == "crit" ? 0 : n.BillingLevel == "warn" ? 1 : 2).ToList();
-        if (rows.Count == 0) return "💳 Дат оплаты нет: биллинг в панели не заполнен.";
-        var sb = new StringBuilder();
-        sb.AppendLine("💳 Оплата серверов");
-        foreach (var n in rows)
-            sb.AppendLine($"{(n.BillingLevel == "crit" ? "🔴" : n.BillingLevel == "warn" ? "🟡" : "🟢")} {n.Name}: {n.BillingText}");
-        return sb.ToString().TrimEnd();
-    }
-
-    string BuildVersion()
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("ℹ️ Версии");
-        sb.AppendLine($"Панель: {_panelVersion ?? "неизвестна"}"
-            + (ReleaseCheck.Newer(_latestBackend, _panelVersion) ? $" → доступна {_latestBackend}" : _latestBackend != null ? " (актуальна)" : ""));
-        if (_prev != null)
-            foreach (var n in _prev.Nodes.Where(x => x.VersionText != "")) sb.AppendLine($"• {n.Name}: {n.VersionText}");
-        sb.Append($"Программа: {Updater.CurrentText}" + (_appUpdate != null ? $" → доступна {_appUpdate.Version}" : ""));
-        return sb.ToString();
-    }
-
-    // Аптайм считается по журналу событий: падения короче ~1 минуты не фиксируются, время, когда программа была закрыта, не учитывается
-    string BuildUptime()
-    {
-        var now = DateTime.Now;
-        var since = _s.MonitorSince ?? now;
-
-        string Line(string name, string[] suffixes)
-        {
-            var parts = new List<string>();
-            foreach (var days in new[] { 7, 30 })
-            {
-                var from = now.AddDays(-days);
-                if (from < since) from = since;
-                var span = now - from;
-                if (span < TimeSpan.FromHours(1)) { parts.Add($"{days} дн: мало данных"); continue; }
-                var (down, _) = _log.Downtime(name, suffixes, from);
-                double pct = Math.Max(0, 100 - down.TotalSeconds / span.TotalSeconds * 100);
-                parts.Add($"{days} дн: {pct:0.##}%");
-            }
-            var from30 = now.AddDays(-30) < since ? since : now.AddDays(-30);
-            var (_, falls) = _log.Downtime(name, suffixes, from30);
-            return $"{name} — {string.Join(" · ", parts)}" + (falls > 0 ? $" · падений: {falls}" : "");
-        }
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"🕒 Аптайм (мониторинг с {since:dd.MM.yyyy})");
-        if (_prev != null)
-        {
-            sb.AppendLine("Ноды");
-            foreach (var n in _prev.Nodes) sb.AppendLine("• " + Line(n.Name, new[] { "|conn" }));
-        }
-        return sb.ToString().TrimEnd();
-    }
-
-    // ---- Telegram ----
-    static string TgKind(string key) => key.EndsWith("|bill") ? "billing" : "nodes";
-
-    void Tg(string kind, string text)
-    {
-        bool allowed = kind switch
-        {
-            "nodes" => _s.TgNodes, "limits" => _s.TgLimits,
-            "billing" => _s.TgBilling, "updates" => _s.TgUpdates, _ => true,
-        };
-        if (_s.TgEnabled && allowed && !_s.TgSilentNow) _tg.Enqueue(text);   // в режиме «не беспокоить» тревоги не уходят, ответы на команды — уходят
-    }
-
-    // Индикатор в шапке: «☾ тихо до 08:00» — пока уведомления в Telegram не отправляются
-    void UpdateDndChip()
-    {
-        var until = _s.TgEnabled ? _s.SilentUntil(DateTime.Now) : null;
-        _win?.SetDnd(until is DateTime u ? "☾ тихо до " + Settings.WhenText(u) : null);
-    }
-
-    string BuildStatus()
-    {
-        var s = _prev;
-        if (s == null) return "Данных пока нет: программа ещё не получила ответ панели.";
-        int online = s.Users.Count(u => u.IsOnline);
-        int ok = s.Nodes.Count(n => n.Connected && n.XrayOk);
-        var sb = new StringBuilder();
-        sb.AppendLine($"📊 Онлайн: {online} · ноды {ok}/{s.Nodes.Count}");
-        if (_s.SilentUntil(DateTime.Now) is DateTime su)
-            sb.AppendLine(su == DateTime.MaxValue ? "🔕 Не беспокоить: тихие часы на весь день" : $"🔕 Не беспокоить до {Settings.WhenText(su)}");
-        foreach (var n in s.Nodes)
-            sb.AppendLine($"{(n.Connected && n.XrayOk ? "✅" : "🔴")} {n.Name} · онлайн {n.UsersOnline}"
-                          + (n.SrvCpu >= 0 ? $" · CPU {n.CpuPctText}" : "") + (n.RamPctText != "—" ? $" · RAM {n.RamPctText}" : ""));
-        sb.Append($"Активных проблем: {_log.Active} · обновлено {s.At:HH:mm:ss}");
-        return sb.ToString();
-    }
-
-    string BuildProblems()
-    {
-        var rows = _log.Rows().Where(r => r.Active).ToList();
-        if (rows.Count == 0) return "✅ Активных проблем нет";
-        return string.Join("\n", rows.Select(r => $"{(r.Level == "warn" ? "🟡" : "🔴")} {r.Subject}: {r.Text} ({r.Status})"));
     }
 
     // ---- отключённые уведомления ----
@@ -811,18 +492,37 @@ public partial class App : Application
             var fresh = now.Where(kv => !_alerted.Contains(kv.Key)).Select(kv => kv.Value).ToList();
             if (fresh.Count > 0)
                 Balloon(string.Join("\n", fresh.Take(3)) + (fresh.Count > 3 ? $"\nи ещё {fresh.Count - 3}…" : ""),
-                    Forms.ToolTipIcon.Warning, tgKind: "limits", tgText: "⚠️ " + string.Join("\n", fresh.Take(15)));
+                    Forms.ToolTipIcon.Warning);
         }
         _alerted.Clear();
         foreach (var k in now.Keys) _alerted.Add(k);
     }
 
-    void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false,
-        string? tgKind = null, string? tgText = null)
+    void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false)
     {
-        if (tgKind != null) Tg(tgKind, tgText ?? text);
         _balloonIncident = incident;
         _balloonShownAt = DateTime.Now;
         _tray.ShowBalloonTip(5000, "Remnawave", text, icon);
+    }
+}
+
+// Есть ли у компьютера интернет: TCP к нескольким публичным адресам (без DNS)
+static class Net
+{
+    public static async Task<bool> HasInternetAsync()
+    {
+        var targets = new[] { ("1.1.1.1", 443), ("8.8.8.8", 443), ("77.88.8.8", 443) };
+        var tasks = targets.Select(async t =>
+        {
+            try
+            {
+                using var c = new System.Net.Sockets.TcpClient();
+                using var cts = new CancellationTokenSource(3000);
+                await c.ConnectAsync(t.Item1, t.Item2, cts.Token);
+                return true;
+            }
+            catch { return false; }
+        }).ToList();
+        return (await Task.WhenAll(tasks)).Any(x => x);
     }
 }

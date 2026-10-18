@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -43,3 +44,34 @@ jobs:
           $tag = "v${{ steps.v.outputs.version }}"
           gh release create $tag RemnawaveMonitor-win-x64.zip --title $tag --generate-notes --target ${{ github.sha }} --latest
           gh release list --limit 3
+
+  # Telegram-бот для сервера с панелью: Docker-образ в GitHub Container Registry
+  bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="1.3.${{ github.run_number }}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: bot/Dockerfile
+          push: true
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          tags: |
+            ghcr.io/q3ry777/remnawave-bot:latest
+            ghcr.io/q3ry777/remnawave-bot:${{ steps.v.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Remnawave bot: Telegram-уведомления и команды для панели Remnawave

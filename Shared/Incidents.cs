@@ -19,23 +19,26 @@ public class Incident
 
 public record IncidentRow(string Time, string Subject, string Text, string Status, string Level, bool Active, bool Unread);
 
-// Журнал событий: падения и восстановления нод, хранится в %APPDATA%\RemnawaveMonitor\incidents.json
+// Журнал событий: падения и восстановления нод (на ПК — %APPDATA%\RemnawaveMonitor, у бота — /data)
 public class IncidentLog
 {
-    static string FilePath => Path.Combine(Settings.DataDir, "incidents.json");
+    string _dir = "";
+    string FilePath => Path.Combine(_dir, "incidents.json");
     List<Incident> _items = new();
 
     public int Unread => _items.Count(x => x.Unread);
     public int Active => _items.Count(x => x.End == null);
+    public IEnumerable<string> ActiveKeys => _items.Where(x => x.End == null).Select(x => x.Key).Distinct().ToList();
 
-    public static IncidentLog Load()
+    // closeActive: программа на ПК была закрыта — что с открытыми проблемами сейчас, неизвестно, актуальные появятся заново.
+    // Бот на сервере открытые проблемы сохраняет, чтобы после перезапуска не присылать те же тревоги повторно.
+    public static IncidentLog Load(string dir, bool closeActive = true)
     {
-        var log = new IncidentLog();
+        var log = new IncidentLog { _dir = dir };
         try
         {
-            log._items = JsonSerializer.Deserialize<List<Incident>>(File.ReadAllText(FilePath)) ?? new();
-            // приложение было закрыто — что с этими проблемами сейчас, неизвестно; актуальные появятся заново
-            foreach (var x in log._items.Where(y => y.End == null)) x.End = DateTime.Now;
+            log._items = JsonSerializer.Deserialize<List<Incident>>(File.ReadAllText(log.FilePath)) ?? new();
+            if (closeActive) foreach (var x in log._items.Where(y => y.End == null)) x.End = DateTime.Now;
         }
         catch { }
         return log;
@@ -45,7 +48,7 @@ public class IncidentLog
     {
         try
         {
-            Directory.CreateDirectory(Settings.DataDir);
+            Directory.CreateDirectory(_dir);
             File.WriteAllText(FilePath, JsonSerializer.Serialize(_items));
         }
         catch { }

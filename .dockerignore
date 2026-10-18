@@ -1,0 +1,8 @@
+**/bin
+**/obj
+out
+.git
+Flags
+Fonts
+Themes
+*.zip

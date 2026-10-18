@@ -87,8 +87,7 @@
                     <Run Text="настройки"/><Run Text="_" Foreground="{DynamicResource Amber}"/>
                 </TextBlock>
                 <RadioButton GroupName="nav" Tag="PagePanel" Content="панель" Style="{StaticResource NavItem}" IsChecked="True" Checked="Nav_Checked"/>
-                <RadioButton GroupName="nav" Tag="PageSsh" Content="серверы · SSH" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
-                <RadioButton GroupName="nav" Tag="PageTg" Content="telegram" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                <RadioButton GroupName="nav" Tag="PageTg" Content="telegram-бот" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageUpdates" Content="обновления" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageMetrics" Content="метрики" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 <RadioButton GroupName="nav" Tag="PageGeneral" Content="общие" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
@@ -112,94 +111,12 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- ===== серверы (SSH) ===== -->
-            <ScrollViewer x:Name="PageSsh" Style="{StaticResource Page}">
-                <StackPanel Margin="30,24,30,20">
-                    <TextBlock Text="серверы · SSH" Style="{StaticResource PageTitle}"/>
-                    <TextBlock Style="{StaticResource PageDesc}"
-                               Text="Загрузка CPU, память и диск каждой ноды. Вход под отдельным пользователем с паролем: он может только выдать статистику — без консоли и других команд. Данные видны во вкладке «ноды»."/>
-                    <TextBlock x:Name="SrvEmpty" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{DynamicResource Dim}"
-                               Text="Список нод появится после первого ответа панели. Закройте настройки и откройте их снова чуть позже."/>
-                    <Grid x:Name="SrvBlock">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <ListBox x:Name="SrvList" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Fg}"
-                                 ItemContainerStyle="{StaticResource SrvItem}" VerticalAlignment="Top"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="SrvList_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Ellipse Width="7" Height="7" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,6,0,0">
-                                            <Ellipse.Style>
-                                                <Style TargetType="Ellipse">
-                                                    <Setter Property="Fill" Value="{DynamicResource Dim}"/>
-                                                    <Setter Property="Opacity" Value="0.5"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Enabled}" Value="True">
-                                                            <Setter Property="Fill" Value="{DynamicResource Green}"/>
-                                                            <Setter Property="Opacity" Value="1"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Ellipse.Style>
-                                        </Ellipse>
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding Node}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding Host}" FontSize="11" Foreground="{DynamicResource Dim}" TextTrimming="CharacterEllipsis"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-
-                        <StackPanel x:Name="SrvForm" Grid.Column="2">
-                            <TextBlock x:Name="SrvTitle" FontSize="14" FontWeight="Bold"/>
-                            <CheckBox x:Name="SrvEnabled" Style="{StaticResource Check}" Margin="0,12,0,0"
-                                      Content="собирать статистику с этого сервера" Click="SrvEnabled_Click"/>
-                            <TextBlock Text="АДРЕС И ПОРТ SSH" Style="{StaticResource Field}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
-                                <TextBox x:Name="SrvHost" Style="{StaticResource Input}"/>
-                                <TextBox x:Name="SrvPort" Grid.Column="2" Style="{StaticResource Input}"/>
-                            </Grid>
-                            <TextBlock Text="ПОЛЬЗОВАТЕЛЬ (отдельный, не root)" Style="{StaticResource Field}"/>
-                            <TextBox x:Name="SrvUser" Style="{StaticResource Input}"/>
-                            <TextBlock Text="ПАРОЛЬ (хранится зашифрованным)" Style="{StaticResource Field}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <PasswordBox x:Name="SrvPass" Style="{StaticResource InputPwd}"/>
-                                <Button Grid.Column="1" Content="сгенерировать" Style="{StaticResource Btn}" Click="SrvGen_Click"/>
-                            </Grid>
-                            <WrapPanel Margin="0,16,0,0">
-                                <Button Content="скопировать команду установки" Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Click="SrvCopy_Click"/>
-                                <Button Content="проверить подключение" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="SrvTest_Click"/>
-                            </WrapPanel>
-                            <TextBlock x:Name="SrvResult" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"/>
-                            <DockPanel Margin="0,14,0,0">
-                                <Button DockPanel.Dock="Right" Content="сбросить ключ" Style="{StaticResource Btn}" Click="SrvResetKey_Click"
-                                        ToolTip="если сервер переустанавливали — ключ запомнится заново при следующем подключении"/>
-                                <TextBlock x:Name="SrvKey" FontSize="11" Foreground="{DynamicResource Dim}" TextWrapping="Wrap" VerticalAlignment="Center"/>
-                            </DockPanel>
-                            <Border Margin="0,18,0,0" Padding="14,12" CornerRadius="8" BorderThickness="1"
-                                    BorderBrush="{DynamicResource Line}" Background="{DynamicResource Panel}">
-                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Dim}" LineHeight="19">
-                                    <Run Text="как подключить сервер" FontWeight="Bold" Foreground="{DynamicResource Fg}"/><LineBreak/>
-                                    <Run Text="1. Нажмите «сгенерировать» — появится надёжный пароль."/><LineBreak/>
-                                    <Run Text="2. «скопировать команду установки» и вставьте её в консоль сервера под root. Дождитесь строки «RW-MONITOR: готово»."/><LineBreak/>
-                                    <Run Text="3. Включите «собирать статистику», нажмите «проверить подключение», затем «сохранить»."/>
-                                </TextBlock>
-                            </Border>
-                        </StackPanel>
-                    </Grid>
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- ===== telegram ===== -->
+            <!-- ===== telegram-бот (на сервере с панелью) ===== -->
             <ScrollViewer x:Name="PageTg" Style="{StaticResource Page}">
                 <StackPanel Margin="30,24,30,20">
-                    <TextBlock Text="telegram" Style="{StaticResource PageTitle}"/>
-                    <TextBlock Text="Тревоги и команды в Telegram. Работает, пока программа запущена." Style="{StaticResource PageDesc}"/>
-                    <CheckBox x:Name="TgBox" Style="{StaticResource Check}" Content="отправлять уведомления в Telegram"/>
+                    <TextBlock Text="telegram-бот" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Style="{StaticResource PageDesc}"
+                               Text="Бот работает на сервере с панелью (Docker, рядом с Remnawave) — круглосуточно, независимо от этого компьютера. Здесь задаются его настройки: кнопка внизу собирает команду установки. Программа на ПК в Telegram ничего не отправляет."/>
                     <TextBlock Text="ТОКЕН БОТА (от @BotFather; хранится зашифрованным)" Style="{StaticResource Field}"/>
                     <PasswordBox x:Name="TgTokenBox" Style="{StaticResource InputPwd}"/>
                     <TextBlock Text="ID ЧАТА (сначала напишите боту любое сообщение)" Style="{StaticResource Field}"/>
@@ -208,20 +125,15 @@
                         <TextBox x:Name="TgChatBox" Style="{StaticResource Input}"/>
                         <Button Grid.Column="1" Content="привязать чат" Style="{StaticResource Btn}" Click="TgBind_Click"/>
                     </Grid>
-                    <TextBlock Text="ПРОКСИ (необязательно): http://host:port или socks5://host:port" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="TgProxyBox" Style="{StaticResource Input}"/>
                     <TextBlock Text="ЧТО ПРИСЫЛАТЬ" Style="{StaticResource Field}" Margin="0,20,0,4"/>
-                    <CheckBox x:Name="TgNodesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="ноды и связь с панелью"/>
+                    <CheckBox x:Name="TgNodesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="нода не в сети / снова в сети"/>
                     <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="лимиты трафика и подписки пользователей"/>
                     <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="оплата серверов"/>
-                    <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="новые версии (панель, ноды, программа)"/>
-                    <TextBlock Text="НЕ БЕСПОКОИТЬ" Style="{StaticResource Field}" Margin="0,22,0,8"/>
-                    <StackPanel Orientation="Horizontal">
-                        <CheckBox x:Name="TgDndBox" Style="{StaticResource Check}" Content="не присылать уведомления до" VerticalAlignment="Center" Click="TgDnd_Click"/>
-                        <TextBox x:Name="TgDndTimeBox" Style="{StaticResource Input}" Width="90" Margin="12,0,0,0" TextChanged="TgDndTime_Changed"
-                                 ToolTip="время по часам компьютера, например 08:00"/>
-                    </StackPanel>
-                    <TextBlock x:Name="TgDndHint" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource Dim}"/>
+                    <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="новые версии панели и нод"/>
+
+                    <TextBlock Text="КНОПКА «НЕ БЕСПОКОИТЬ» В БОТЕ — ТИШИНА ДО" Style="{StaticResource Field}" Margin="0,22,0,6"/>
+                    <TextBox x:Name="TgDndTimeBox" Style="{StaticResource Input}" Width="90" HorizontalAlignment="Left"
+                             ToolTip="например 08:00; в боте можно указать и своё время: /dnd 10:30"/>
 
                     <CheckBox x:Name="TgQuietBox" Style="{StaticResource Check}" Margin="0,20,0,0"
                               Content="тихие часы по расписанию — каждый день" Click="TgQuiet_Click"/>
@@ -232,7 +144,23 @@
                         <Button Content="очистить" Style="{StaticResource Btn}" Margin="0" Click="QuietClear_Click"/>
                     </StackPanel>
                     <TextBlock x:Name="TgQuietHint" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource Dim}"/>
-                    <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,18,0,0" HorizontalAlignment="Left" Click="TgTest_Click"/>
+
+                    <WrapPanel Margin="0,18,0,0">
+                        <Button Content="скопировать команду установки" Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Click="TgCopy_Click"/>
+                        <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="TgTest_Click"/>
+                    </WrapPanel>
+                    <TextBlock x:Name="TgResult" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"/>
+                    <Border Margin="0,18,0,0" Padding="14,12" CornerRadius="8" BorderThickness="1"
+                            BorderBrush="{DynamicResource Line}" Background="{DynamicResource Panel}">
+                        <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Dim}" LineHeight="19">
+                            <Run Text="как поставить" FontWeight="Bold" Foreground="{DynamicResource Fg}"/><LineBreak/>
+                            <Run Text="1. Заполните поля выше, нажмите «скопировать команду установки»."/><LineBreak/>
+                            <Run Text="2. Выполните её на сервере с панелью под root. Дождитесь «RW-BOT: готово» — бот пришлёт приветствие с кнопками."/><LineBreak/>
+                            <Run Text="3. После изменения настроек — снова скопируйте и выполните команду: она перезапишет настройки и перезапустит бота."/><LineBreak/>
+                            <Run Text="Обновление бота: cd /opt/remnawave-bot &amp;&amp; docker compose pull &amp;&amp; docker compose up -d"/><LineBreak/>
+                            <Run Text="Журнал: docker logs -f remnawave-bot"/>
+                        </TextBlock>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
 

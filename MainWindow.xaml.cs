@@ -52,13 +52,6 @@ public partial class MainWindow : Window
         MutesChanged?.Invoke();
     }
 
-    // Индикатор «не беспокоить»: null — скрыть
-    public void SetDnd(string? text)
-    {
-        DndChip.Visibility = text == null ? Visibility.Collapsed : Visibility.Visible;
-        if (text != null) DndText.Text = text;
-    }
-
     public void SetJournalBadge(int unread, int active)
     {
         JournalBtn.Content = unread > 0 ? $"журнал ({unread})" : active > 0 ? $"журнал · активно {active}" : "журнал";

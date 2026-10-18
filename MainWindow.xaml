@@ -40,11 +40,6 @@
                                 MouseLeftButtonUp="AppUpdateChip_Click" ToolTip="скачать и установить новую версию программы">
                             <TextBlock x:Name="AppUpdateText" FontSize="11" Foreground="{DynamicResource Green}"/>
                         </Border>
-                        <Border x:Name="DndChip" Visibility="Collapsed" Margin="10,0,0,0" Padding="9,3" CornerRadius="10"
-                                BorderThickness="1" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Panel}"
-                                ToolTip="уведомления в Telegram сейчас не отправляются · настройки → telegram">
-                            <TextBlock x:Name="DndText" FontSize="11" Foreground="{DynamicResource Dim}"/>
-                        </Border>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -307,29 +302,21 @@
                                                 </Border>
                                             </Grid>
 
-                                            <!-- строка 2: CPU, память, диск сервера и скорость -->
+                                            <!-- строка 2: память (данные панели), load average и скорость -->
                                             <Grid Margin="0,10,0,0">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="190"/><ColumnDefinition Width="190"/>
-                                                    <ColumnDefinition Width="190"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="190"/><ColumnDefinition Width="380"/>
+                                                    <ColumnDefinition Width="110"/><ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Background="Transparent" ToolTip="{Binding CpuTip}">
-                                                    <TextBlock Text="CPU" Style="{StaticResource MeterLbl}"/>
-                                                    <ProgressBar Style="{StaticResource MeterBar}" Value="{Binding CpuVal, Mode=OneWay}" Tag="{Binding CpuLevel}"/>
-                                                    <TextBlock Text="{Binding CpuPctText}" Style="{StaticResource MeterPct}" Tag="{Binding CpuLevel}"/>
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="2" Orientation="Horizontal" Background="Transparent" ToolTip="{Binding RamTip}">
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Background="Transparent" ToolTip="{Binding RamTip}">
                                                     <TextBlock Text="RAM" Style="{StaticResource MeterLbl}"/>
                                                     <ProgressBar Style="{StaticResource MeterBar}" Value="{Binding RamVal, Mode=OneWay}" Tag="{Binding RamLevel}"/>
                                                     <TextBlock Text="{Binding RamPctText}" Style="{StaticResource MeterPct}" Tag="{Binding RamLevel}"/>
                                                 </StackPanel>
-                                                <StackPanel Grid.Column="3" Orientation="Horizontal" Background="Transparent" ToolTip="{Binding DiskTip}">
-                                                    <TextBlock Text="ДИСК" Style="{StaticResource MeterLbl}"/>
-                                                    <ProgressBar Style="{StaticResource MeterBar}" Value="{Binding DiskVal, Mode=OneWay}" Tag="{Binding DiskLevel}"/>
-                                                    <TextBlock Text="{Binding DiskPctText}" Style="{StaticResource MeterPct}" Tag="{Binding DiskLevel}"/>
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="4" Text="{Binding Down}" FontSize="12" Foreground="{DynamicResource Green}" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="5" Text="{Binding Up}" FontSize="12" Foreground="{DynamicResource Amber}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding LoadText}" FontSize="12" Foreground="{DynamicResource Dim}"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding Down}" FontSize="12" Foreground="{DynamicResource Green}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding Up}" FontSize="12" Foreground="{DynamicResource Amber}" VerticalAlignment="Center"/>
                                             </Grid>
                                             <!-- строка 3: версии -->
                                             <Grid Margin="0,8,0,0">
@@ -359,19 +346,6 @@
                                                     </TextBlock.Style>
                                                 </TextBlock>
                                             </Grid>
-                                            <!-- строка 4: ошибка сбора статистики по SSH -->
-                                            <TextBlock Text="{Binding SrvNote}" FontSize="12" Foreground="{DynamicResource Red}" Margin="22,8,0,0"
-                                                       TextTrimming="CharacterEllipsis">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding SrvNote}" Value="">
-                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
