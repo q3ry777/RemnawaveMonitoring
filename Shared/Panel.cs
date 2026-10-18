@@ -51,6 +51,18 @@ public class Api
 {
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
+    // Расхождение часов этого компьютера с панелью (по заголовку Date её ответов). «Онлайн» и сроки считаются
+    // по времени панели: если часы ПК спешат на минуту, клиенты иначе выглядели бы офлайн раньше времени.
+    public static TimeSpan ClockOffset { get; private set; }
+    public static DateTimeOffset Now => DateTimeOffset.UtcNow + ClockOffset;
+
+    static void TrackClock(HttpResponseMessage res)
+    {
+        if (res.Headers.Date is not DateTimeOffset d) return;
+        var off = d - DateTimeOffset.UtcNow;
+        ClockOffset = Math.Abs(off.TotalSeconds) >= 5 ? off : TimeSpan.Zero;   // Date — с точностью до секунды
+    }
+
     // IP активных подключений пользователей на ноде (панель 3.x: /api/connections, 2.x: /api/ip-control).
     // Панель опрашивает ноду асинхронно: сначала задание, потом результат. -> (id пользователя, IP, когда виден)
     public async Task<List<(string user, string ip, DateTimeOffset seen)>> FetchNodeIpsAsync(IPanelConfig s, string nodeUuid)
@@ -130,6 +142,7 @@ public class Api
                 using var req = Request(s, HttpMethod.Get, path);
                 using var res = await _http.SendAsync(req);
                 res.EnsureSuccessStatusCode();
+                TrackClock(res);
                 return await res.Content.ReadAsStringAsync();
             }
             catch (Exception e) { last = e; await Task.Delay(500 * (1 << i)); }
@@ -352,7 +365,7 @@ public static class SnapshotBuilder
             string billText = "", billLevel = "", billShort = "";
             if (billing.TryGetValue(uuid, out var bill))
             {
-                var left = bill.date - DateTimeOffset.UtcNow;
+                var left = bill.date - Api.Now;
                 int days = (int)Math.Ceiling(left.TotalDays);
                 billText = (left < TimeSpan.Zero ? "оплата просрочена" : days <= 0 ? "оплата сегодня" : $"оплата через {days} д")
                            + $" ({bill.date.ToLocalTime():dd.MM})" + (bill.provider != "" ? $" · {bill.provider}" : "");
@@ -395,14 +408,14 @@ public static class SnapshotBuilder
             if (DateTimeOffset.TryParse(onlineAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var ts))
             {
                 seen = ts;
-                online = (DateTimeOffset.UtcNow - ts).TotalSeconds < s.OnlineWindowSec;
+                online = (Api.Now - ts).TotalSeconds < s.OnlineWindowSec;
                 last = online ? "сейчас" : ts.ToLocalTime().ToString("dd.MM HH:mm");
             }
 
             string note = "", noteLevel = "";
             if (DateTimeOffset.TryParse(J.S(u, "expireAt"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var exp))
             {
-                var left = exp - DateTimeOffset.UtcNow;
+                var left = exp - Api.Now;
                 if (left < TimeSpan.Zero) { note = "истёк"; noteLevel = "crit"; }
                 else if (left.TotalDays <= 7)
                 {

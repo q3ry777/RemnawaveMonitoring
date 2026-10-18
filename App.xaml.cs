@@ -122,7 +122,7 @@ public partial class App : Application
         _timer.Start();
 
         _ipTimer.Tick += async (_, _) => await RefreshIps();
-        _ipTimer.Interval = TimeSpan.FromMinutes(2);
+        _ipTimer.Interval = TimeSpan.FromMinutes(1);
         _ipTimer.Start();
 
         _relTimer.Tick += async (_, _) => { await RefreshReleases(); await CheckAppUpdateAsync(); };
@@ -262,21 +262,13 @@ public partial class App : Application
                 MutedText = MutedLabel(n.Name),
             };
         }).ToList();
-        var users = s.Users.Select(u =>
-        {
-            var key = u.UserId != "" ? u.UserId : u.UserUuid;
-            if (key == "" || !_ips.TryGetValue(key, out var list) || list.Count == 0) return u;
-            var distinct = list.OrderByDescending(x => x.seen).GroupBy(x => x.ip).Select(g => g.First()).ToList();
-            var text = distinct[0].ip + (distinct.Count > 1 ? $" +{distinct.Count - 1}" : "");
-            var tip = string.Join("\n", distinct.Select(x => $"{x.ip} — {x.node}, {x.seen.ToLocalTime():dd.MM HH:mm:ss}"));
-            return u with { Ip = text, IpTip = tip };
-        }).ToList();
+        var users = Online.Apply(s.Users, _ips, _s.OnlineWindowSec);
         return s with { Nodes = nodes, Users = users };
     }
 
-    // ---- IP активных подключений пользователей (раз в 2 минуты, только ноды с людьми онлайн) ----
+    // ---- IP активных подключений пользователей (раз в минуту, только ноды с людьми онлайн); по ним же уточняется «онлайн» ----
     readonly DispatcherTimer _ipTimer = new();
-    Dictionary<string, List<(string ip, DateTimeOffset seen, string node)>> _ips = new();
+    Dictionary<string, List<IpSeen>> _ips = new();
     bool _ipBusy, _ipFirst = true;
     string _ipError = "";
 
@@ -286,24 +278,9 @@ public partial class App : Application
         _ipBusy = true;
         try
         {
-            var nodes = _prev.Nodes.Where(n => n.Connected && n.UsersOnline > 0 && n.NodeUuid != "").ToList();
-            var tasks = nodes.Select(async n =>
-            {
-                try { return (n.Name, list: await _api.FetchNodeIpsAsync(_s, n.NodeUuid), err: ""); }
-                catch (Exception ex) { return (n.Name, list: new List<(string user, string ip, DateTimeOffset seen)>(), err: ex.Message); }
-            }).ToList();
-            var res = await Task.WhenAll(tasks);
-            var map = new Dictionary<string, List<(string ip, DateTimeOffset seen, string node)>>();
-            foreach (var (node, list, _) in res)
-                foreach (var (user, ip, seen) in list)
-                {
-                    if (!map.TryGetValue(user, out var l)) map[user] = l = new();
-                    l.Add((ip, seen, node));
-                }
+            var (map, err) = await Online.FetchIpsAsync(_api, _s, _prev.Nodes);
             _ips = map;
-            var err = res.Select(r => r.err).FirstOrDefault(e => e != "") ?? "";
-            if (err != "" && err != _ipError)
-                _win.SetStatus("IP пользователей: " + (err.Contains("403") ? "у API-токена нет прав на подключения (connections)" : err));
+            if (err != "" && err != _ipError) _win.SetStatus("IP пользователей: " + err);
             _ipError = err;
             ReapplyExtras();
         }

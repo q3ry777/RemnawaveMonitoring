@@ -48,6 +48,8 @@ public class Bot
     string _panelError = "";
     DateTime _panelErrorSince;
     string? _panelVersion;
+    Dictionary<string, List<IpSeen>> _ips = new();   // IP активных подключений: по ним уточняется «онлайн»
+    string _ipError = "";
 
     public Bot(BotConfig cfg)
     {
@@ -70,6 +72,7 @@ public class Bot
         await RefreshAsync();   // команды начинаем принимать, когда уже есть данные панели
         var tg = Task.Run(() => _tg.RunAsync(ct), ct);
         var rel = Task.Run(() => ReleasesLoopAsync(ct), ct);
+        var ipl = Task.Run(() => IpsLoopAsync(ct), ct);
         while (!ct.IsCancellationRequested)
         {
             try { await Task.Delay(TimeSpan.FromSeconds(_cfg.IntervalSec), ct); }
@@ -89,6 +92,7 @@ public class Bot
         {
             var (u, n, m, b) = await _api.FetchAsync(_cfg);
             var snap = SnapshotBuilder.Build(u, n, _cfg, m, b);
+            snap = snap with { Users = Online.Apply(snap.Users, _ips, _cfg.OnlineWindowSec) };
             if (_panelError != "") Log.Write("связь с панелью восстановлена");
             _panelError = "";
             lock (_lock)
@@ -349,50 +353,56 @@ public class Bot
         }
     }
 
-    // Онлайн с IP: адреса запрашиваются у панели в момент команды (только ноды, где есть люди)
-    async Task<string> BuildUsersAsync()
+    // IP активных подключений — раз в минуту (только ноды, где есть люди)
+    async Task IpsLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            await RefreshIpsAsync();
+            try { await Task.Delay(TimeSpan.FromMinutes(1), ct); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    async Task RefreshIpsAsync()
     {
         Snapshot? s;
         lock (_lock) s = _snap;
-        if (s == null) return PanelLine() + NoData;
-        var online = s.Users.Where(u => u.IsOnline).ToList();
-        if (online.Count == 0) return $"👥 Сейчас никого онлайн (всего пользователей: {s.Users.Count})";
-
-        var ips = new Dictionary<string, List<(string ip, DateTimeOffset seen, string node)>>();
-        string ipError = "";
-        var nodes = s.Nodes.Where(n => n.Connected && n.UsersOnline > 0 && n.NodeUuid != "").ToList();
-        var tasks = nodes.Select(async n =>
+        if (s == null) return;
+        try
         {
-            try { return (n.Name, list: await _api.FetchNodeIpsAsync(_cfg, n.NodeUuid), err: ""); }
-            catch (Exception ex) { return (n.Name, list: new List<(string user, string ip, DateTimeOffset seen)>(), err: ex.Message); }
-        }).ToList();
-        var all = Task.WhenAll(tasks);
-        if (await Task.WhenAny(all, Task.Delay(25000)) == all)
-        {
-            foreach (var (node, list, err) in all.Result)
+            var (map, err) = await Online.FetchIpsAsync(_api, _cfg, s.Nodes);
+            if (err != "" && err != _ipError) Log.Write("IP пользователей: " + err);
+            lock (_lock)
             {
-                if (err != "" && ipError == "") ipError = err.Contains("403") ? "у API-токена нет прав на подключения" : err;
-                foreach (var (user, ip, seen) in list)
-                {
-                    if (!ips.TryGetValue(user, out var l)) ips[user] = l = new();
-                    l.Add((ip, seen, node));
-                }
+                _ips = map;
+                _ipError = err;
+                if (_snap != null) _snap = _snap with { Users = Online.Apply(_snap.Users, map, _cfg.OnlineWindowSec) };
             }
         }
-        else ipError = "панель долго не отвечает";
+        catch (Exception ex) { Log.Write("IP пользователей: " + ex.Message); }
+    }
 
-        var sb = new StringBuilder();
-        sb.AppendLine($"👥 Онлайн: {online.Count} из {s.Users.Count}");
-        foreach (var u in online)
+    async Task<string> BuildUsersAsync()
+    {
+        await RefreshIpsAsync();   // свежие IP на момент команды
+        lock (_lock)
         {
-            sb.AppendLine($"• {u.Username} — {Fmt.Flag(u.LastNodeCountry)}{u.LastNode}");
-            var key = u.UserId != "" ? u.UserId : u.UserUuid;
-            if (key != "" && ips.TryGetValue(key, out var list))
-                foreach (var x in list.OrderByDescending(x => x.seen).GroupBy(x => x.ip).Select(g => g.First()))
-                    sb.AppendLine($"     🌐 {x.ip} — {x.node}, {x.seen.ToLocalTime():dd.MM HH:mm:ss}");
+            var s = _snap;
+            if (s == null) return PanelLine() + NoData;
+            var online = s.Users.Where(u => u.IsOnline).ToList();
+            if (online.Count == 0) return $"👥 Сейчас никого онлайн (всего пользователей: {s.Users.Count})";
+            var sb = new StringBuilder();
+            sb.AppendLine($"👥 Онлайн: {online.Count} из {s.Users.Count}");
+            foreach (var u in online)
+            {
+                sb.AppendLine($"• {u.Username} — {Fmt.Flag(u.LastNodeCountry)}{u.LastNode}");
+                if (u.IpTip != "")
+                    foreach (var line in u.IpTip.Split('\n')) sb.AppendLine("     🌐 " + line);
+            }
+            if (_ipError != "") sb.AppendLine($"(IP не получены: {_ipError})");
+            return sb.ToString().TrimEnd();
         }
-        if (ipError != "") sb.AppendLine($"(IP не получены: {ipError})");
-        return sb.ToString().TrimEnd();
     }
 
     string BuildProblems()
