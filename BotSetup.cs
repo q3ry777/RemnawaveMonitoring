@@ -82,7 +82,7 @@ public static class BotSetup
               remnawave-network:
                 external: true
             RWCOMPOSE
-            docker compose pull
+            docker compose pull || { echo "RW-BOT: не удалось скачать образ. Если пакет приватный — сделайте его публичным: github.com/users/q3ry777/packages/container/package/remnawave-bot → Package settings → Change visibility → Public (в образе нет токенов), или выполните: docker login ghcr.io -u q3ry777 (пароль — токен с правом read:packages)"; exit 1; }
             docker compose up -d --force-recreate
             sleep 5
             docker logs --tail 15 remnawave-bot
