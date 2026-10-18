@@ -84,6 +84,13 @@ public static class BotSetup
             RWCOMPOSE
             docker compose pull || { echo "RW-BOT: не удалось скачать образ. Если пакет приватный — сделайте его публичным: github.com/users/q3ry777/packages/container/package/remnawave-bot → Package settings → Change visibility → Public (в образе нет токенов), или выполните: docker login ghcr.io -u q3ry777 (пароль — токен с правом read:packages)"; exit 1; }
             docker compose up -d --force-recreate
+            # автообновление: каждый день в 04:17 (время сервера) скачивается новая версия, если она вышла
+            if command -v crontab >/dev/null 2>&1; then
+              (crontab -l 2>/dev/null | grep -v remnawave-bot; echo '17 4 * * * cd /opt/remnawave-bot && docker compose pull -q && docker compose up -d && docker image prune -f >/dev/null 2>&1 # remnawave-bot') | crontab -
+              echo "RW-BOT: автообновление включено (каждый день в 04:17 по времени сервера)"
+            else
+              echo "RW-BOT: cron не найден — автообновление не включено, обновляйте вручную"
+            fi
             sleep 5
             docker logs --tail 15 remnawave-bot
             echo "RW-BOT: готово. Журнал: docker logs -f remnawave-bot"

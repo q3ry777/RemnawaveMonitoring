@@ -25,7 +25,13 @@ public record UserRow(
     string Username, string Status, string Traffic, string LastNode, string Online, bool IsOnline, string LastNodeCountry,
     double TrafficBytes, DateTimeOffset? LastSeen, bool HasLimit, double TrafficPct, string TrafficLevel,
     string ExpireNote, string ExpireLevel, string SubscriptionUrl,
-    string UserId = "", string UserUuid = "", string Ip = "", string IpTip = "");
+    string UserId = "", string UserUuid = "", string Ip = "", string IpTip = "",
+    string Raw = "");   // исходный JSON пользователя из панели — для карточки пользователя
+
+// Устройство пользователя (HWID) и трафик по дням / по нодам — для карточки пользователя
+public record UserDevice(string Platform, string Os, string Model, string Agent, string Ip, DateTimeOffset? Created, DateTimeOffset? Updated);
+public record DayUsage(DateTime Day, double Bytes);
+public record NodeUsage(string Name, string Country, double Bytes);
 
 public record NodeRow(
     string Name, string Country, string Status, string Xray, string Cpu,
@@ -171,6 +177,97 @@ public class Api
     }
 
     // Сырой текст Prometheus-метрик (Basic Auth) — пока только для сохранения в файл и разбора формата
+    // Устройства (HWID) пользователя. Панель 3.x: /api/hwid/devices/{id}, 2.x: /api/hwid/devices/{uuid}.
+    // null — у панели нет такого API или у токена нет прав.
+    public async Task<List<UserDevice>?> GetUserDevicesAsync(IPanelConfig s, string id, string uuid)
+    {
+        string json = "";
+        if (id != "") json = await GetOptionalAsync(s, $"/api/hwid/devices/{id}");
+        if (json == "" && uuid != "") json = await GetOptionalAsync(s, $"/api/hwid/devices/{uuid}");
+        if (json == "") return null;
+        using var d = JsonDocument.Parse(json);
+        var list = new List<UserDevice>();
+        foreach (var x in J.Items(d.RootElement, "devices"))
+            list.Add(new UserDevice(J.S(x, "platform"), J.S(x, "osVersion"), J.S(x, "deviceModel"), J.S(x, "userAgent"),
+                J.S(x, "requestIp"), Date(J.S(x, "createdAt")), Date(J.S(x, "updatedAt"))));
+        return list.OrderByDescending(x => x.Updated ?? x.Created).ToList();
+    }
+
+    static DateTimeOffset? Date(string s) =>
+        DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var d) ? d : null;
+
+    // Трафик пользователя по дням и по нодам за последние days дней.
+    // Панель 3.x: /api/bandwidth-stats/users/{id}?start&end (даты), 2.x: /api/users/stats/usage/{uuid}/range?start&end.
+    public async Task<(List<DayUsage> days, List<NodeUsage> nodes)?> GetUserUsageAsync(IPanelConfig s, string id, string uuid, int days)
+    {
+        var end = Now.UtcDateTime.Date;
+        var start = end.AddDays(-(days - 1));
+        var dayMap = Enumerable.Range(0, days).ToDictionary(i => start.AddDays(i), _ => 0.0);
+        var nodeMap = new Dictionary<string, (string country, double bytes)>();
+
+        if (id != "")
+        {
+            var json = await GetOptionalAsync(s, $"/api/bandwidth-stats/users/{id}?start={start:yyyy-MM-dd}&end={end:yyyy-MM-dd}&topNodesLimit=50");
+            if (json != "")
+            {
+                using var d = JsonDocument.Parse(json);
+                if (J.P(d.RootElement, "response") is JsonElement r && r.TryGetProperty("categories", out var cats) && cats.ValueKind == JsonValueKind.Array)
+                {
+                    var dates = cats.EnumerateArray().Select(c => DateTime.TryParse(c.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var t) ? t.Date : (DateTime?)null).ToList();
+                    if (r.TryGetProperty("series", out var series) && series.ValueKind == JsonValueKind.Array)
+                        foreach (var sr in series.EnumerateArray())
+                        {
+                            var name = J.S(sr, "name");
+                            double total = J.N(sr, "total");
+                            if (sr.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+                            {
+                                int i = 0;
+                                double sum = 0;
+                                foreach (var v in data.EnumerateArray())
+                                {
+                                    if (i < dates.Count && dates[i] is DateTime day && v.ValueKind == JsonValueKind.Number)
+                                    {
+                                        dayMap[day] = dayMap.GetValueOrDefault(day) + v.GetDouble();
+                                        sum += v.GetDouble();
+                                    }
+                                    i++;
+                                }
+                                if (total == 0) total = sum;
+                            }
+                            if (name != "") nodeMap[name] = (J.S(sr, "countryCode"), nodeMap.GetValueOrDefault(name).bytes + total);
+                        }
+                    return Result(dayMap, nodeMap);
+                }
+            }
+        }
+        if (uuid != "")
+        {
+            var json = await GetOptionalAsync(s, $"/api/users/stats/usage/{uuid}/range?start={start:yyyy-MM-ddTHH:mm:ss.fffZ}&end={end.AddDays(1).AddMilliseconds(-1):yyyy-MM-ddTHH:mm:ss.fffZ}");
+            if (json != "")
+            {
+                using var d = JsonDocument.Parse(json);
+                var root = d.RootElement.TryGetProperty("response", out var rr) ? rr : d.RootElement;
+                if (root.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var x in root.EnumerateArray())
+                    {
+                        double total = J.N(x, "total");
+                        if (Date(J.S(x, "date")) is DateTimeOffset dt) dayMap[dt.UtcDateTime.Date] = dayMap.GetValueOrDefault(dt.UtcDateTime.Date) + total;
+                        var name = J.S(x, "nodeName");
+                        if (name != "") nodeMap[name] = (J.S(x, "countryCode"), nodeMap.GetValueOrDefault(name).bytes + total);
+                    }
+                    return Result(dayMap, nodeMap);
+                }
+            }
+        }
+        return null;
+
+        static (List<DayUsage>, List<NodeUsage>) Result(Dictionary<DateTime, double> dm, Dictionary<string, (string country, double bytes)> nm) =>
+            (dm.OrderBy(k => k.Key).Select(k => new DayUsage(k.Key, k.Value)).ToList(),
+             nm.Where(k => k.Value.bytes > 0).OrderByDescending(k => k.Value.bytes).Select(k => new NodeUsage(k.Key, k.Value.country, k.Value.bytes)).ToList());
+    }
+
     public static async Task<string> FetchMetricsAsync(string url, string user, string pass)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
@@ -429,7 +526,7 @@ public static class SnapshotBuilder
                 hasLimit ? $"{J.Bytes(traffic)} / {J.Bytes(limit)}" : J.Bytes(traffic),
                 names.GetValueOrDefault(uuid, "—"), last, online, countries.GetValueOrDefault(uuid, ""),
                 traffic, seen, hasLimit, Math.Min(1, pct), level, note, noteLevel, J.S(u, "subscriptionUrl"),
-                UserId: J.S(u, "id"), UserUuid: J.S(u, "uuid")));
+                UserId: J.S(u, "id"), UserUuid: J.S(u, "uuid"), Raw: u.GetRawText()));
         }
         users = users.OrderByDescending(x => x.IsOnline).ThenBy(x => x.Username).ToList();
         return new Snapshot(users, nodes, DateTime.Now);

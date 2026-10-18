@@ -97,6 +97,7 @@ public partial class App : Application
         _win.InstallUpdateRequested = () => _ = InstallUpdate();
         _win.OpenJournalRequested = OpenJournal;
         _win.MutesChanged = ReapplyExtras;
+        _win.OpenUserRequested = OpenUser;
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть", null, (_, _) => ShowWin());
@@ -185,6 +186,7 @@ public partial class App : Application
             NotifyUsers(snap, seed: _prev == null);
             _prev = snap;
             _win.Update(snap);
+            UpdateCards();
             RefreshChip();
             if (_ipFirst) { _ipFirst = false; _ = RefreshIps(); }
             _win.SetOffline(null);
@@ -293,6 +295,34 @@ public partial class App : Application
         if (_prev == null) return;
         _prev = ApplyExtras(_prev);
         _win.Update(_prev);
+        UpdateCards();
+    }
+
+    // ---- карточки пользователей (по одной на пользователя) ----
+    readonly Dictionary<string, UserCardWindow> _cards = new();
+
+    UserRow? FreshUser(UserRow u) =>
+        _prev?.Users.FirstOrDefault(x => u.UserUuid != "" ? x.UserUuid == u.UserUuid : x.Username == u.Username);
+
+    void OpenUser(UserRow u)
+    {
+        u = FreshUser(u) ?? u;
+        var key = u.UserUuid != "" ? u.UserUuid : u.Username;
+        if (!_cards.TryGetValue(key, out var w))
+        {
+            w = new UserCardWindow(_api, _s, u, FreshUser) { Owner = _win };
+            w.Closed += (_, _) => _cards.Remove(key);
+            _cards[key] = w;
+            w.Show();
+        }
+        if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+        w.Activate();
+    }
+
+    void UpdateCards()
+    {
+        foreach (var w in _cards.Values.ToList())
+            if (_prev?.Users.FirstOrDefault(x => (x.UserUuid != "" ? x.UserUuid : x.Username) == w.UserKey) is UserRow f) w.Update(f);
     }
 
     // Новые версии панели и нод (GitHub-релизы Remnawave)

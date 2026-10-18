@@ -114,7 +114,7 @@
                                 <TextBlock x:Name="HdrOnline" Grid.Column="5" Tag="online" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
                             </Grid>
                         </Border>
-                        <ListBox x:Name="UsersGrid" PreviewMouseRightButtonUp="List_RightClick" Grid.Row="1" Style="{StaticResource Rows}">
+                        <ListBox x:Name="UsersGrid" PreviewMouseRightButtonUp="List_RightClick" MouseDoubleClick="Users_DoubleClick" Grid.Row="1" Style="{StaticResource Rows}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Border Style="{StaticResource Row}">

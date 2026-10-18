@@ -44,6 +44,13 @@ public partial class MainWindow : Window
     public Action? InstallUpdateRequested;
     public Action? OpenJournalRequested;
     public Action? MutesChanged;
+    public Action<UserRow>? OpenUserRequested;
+
+    // двойной клик по пользователю — карточка
+    void Users_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (FindRow(e.OriginalSource as DependencyObject) is UserRow u) { OpenUserRequested?.Invoke(u); e.Handled = true; }
+    }
 
     void MuteChanged(string status)
     {
@@ -210,6 +217,7 @@ public partial class MainWindow : Window
             switch (row)
             {
                 case UserRow u:
+                    Add("открыть карточку", () => OpenUserRequested?.Invoke(u));
                     Add("копировать имя", () => CopyText(u.Username, u.Username));
                     if (u.Ip != "") Add("копировать IP", () => CopyText(u.Ip.Split(' ')[0], "IP"));
                     Add("копировать ссылку подписки", () =>
