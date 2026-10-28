@@ -509,13 +509,14 @@ public class Bot
 
     // ---- клавиатуры ----
     const string BtnMy = "👤 Мои подписки", BtnRemindOff = "🔕 Не напоминать", BtnRemindOn = "🔔 Напоминать",
-                 BtnDnd = "🔕 Не беспокоить", BtnPay = "💳 Продлить подписку", BtnPayments = "💳 Оплаты";
+                 BtnDnd = "🔕 Не беспокоить", BtnPay = "💳 Продлить подписку", BtnPayments = "💳 Оплаты",
+                 BtnBotUsers = "🤝 Бот у пользователей";
 
     static readonly (string text, string cmd)[] AdminButtons =
     {
         ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
         ("⚠️ Проблемы", "/problems"), ("ℹ️ Версии", "/version"), (BtnDnd, "/dnd"), (BtnMy, "/my"),
-        (BtnPay, "/pay"), (BtnPayments, "/payments"),
+        (BtnPay, "/pay"), (BtnPayments, "/payments"), (BtnBotUsers, "/botusers"),
     };
 
     string AdminKeyboard(string chat)
@@ -524,6 +525,7 @@ public class Bot
         var last = new List<string>();
         if (_cfg.UserCabinet && SubsOf(chat).Count > 0) last.Add(BtnMy);
         if (_cfg.PayEnabled && _cfg.Chats.Contains(chat)) last.Add(BtnPayments);
+        if ((_cfg.UserCabinet || _cfg.UserReminders) && _cfg.Chats.Contains(chat)) last.Add(BtnBotUsers);
         if (last.Count > 0) rows.Add(last.ToArray());
         return Telegram.Keyboard(rows.ToArray());
     }
@@ -544,7 +546,7 @@ public class Bot
     const string AdminHelp =
         "Команды (или кнопки внизу):\n" +
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн и с каких IP\n/problems — активные проблемы\n" +
-        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты";
+        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота";
 
     async Task OnMessageAsync(string chat, string raw, long messageId, bool media, string who)
     {
@@ -587,6 +589,7 @@ public class Bot
                 "/my" => null,
                 "/pay" => null,
                 "/payments" => BuildPayments(),
+                "/botusers" => BuildBotUsers(),
                 "" => "Не понял. Команды — кнопками внизу или /help.",
                 _ => "Не знаю такой команды.\n\n" + AdminHelp,
             };
@@ -661,6 +664,7 @@ public class Bot
         {
             if (_state.Started.Contains(chat)) return;
             _state.Started.Add(chat);
+            _state.StartedAt[chat] = DateTime.Now;
             _state.Save(_cfg.DataDir);
         }
         Alert("users", $"👤 {string.Join(", ", subs.Select(x => x.Username))} подключил(а) бота — теперь получает напоминания");
@@ -946,6 +950,40 @@ public class Bot
                 sb.AppendLine($"{(p.Status == "ok" ? "✅" : p.Status == "no" ? "❌" : "⏳")} {p.Created:dd.MM HH:mm} · {p.Username} · {MonthsText(p.Months)} · {Money(p.Amount)}"
                               + (p.Status == "ok" ? $" → до {p.NewExpire}" : ""));
             if (list.Count == 0) sb.AppendLine("Заявок пока не было.");
+            return sb.ToString().TrimEnd();
+        }
+    }
+
+    // Кто из пользователей подключил бота (по Telegram ID из панели): подключили / не подключали / без Telegram ID
+    string BuildBotUsers()
+    {
+        lock (_lock)
+        {
+            if (_snap == null) return NoData;
+            var on = _byTg.Where(kv => _state.Started.Contains(kv.Key))
+                .OrderByDescending(kv => _state.StartedAt.GetValueOrDefault(kv.Key)).ToList();
+            var off = _byTg.Where(kv => !_state.Started.Contains(kv.Key)).OrderBy(kv => kv.Value.Min(u => u.Username)).ToList();
+            var withTg = _byTg.Values.SelectMany(x => x).Select(Key).ToHashSet();
+            var noTg = _snap.Users.Where(u => !withTg.Contains(Key(u)) && u.Status != "DISABLED").Select(u => u.Username).OrderBy(x => x).ToList();
+            string Names(List<UserRow> l) => string.Join(", ", l.OrderBy(Unlimited).ThenBy(u => u.Username).Select(u => u.Username));
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"🤝 Бот у пользователей: подключили {on.Count} из {_byTg.Count} Telegram ID");
+            sb.AppendLine();
+            sb.AppendLine($"✅ Подключили ({on.Count}):");
+            if (on.Count == 0) sb.AppendLine("   пока никто");
+            foreach (var (tg, users) in on)
+                sb.AppendLine($"• {Names(users)}" + (_state.StartedAt.TryGetValue(tg, out var at) ? $" — с {at:dd.MM.yyyy}" : "")
+                              + (_state.NoRemind.Contains(tg) ? " · 🔕 напоминания выкл" : ""));
+            sb.AppendLine();
+            sb.AppendLine($"⏳ Не подключали ({off.Count}):");
+            if (off.Count == 0) sb.AppendLine("   все подключили");
+            foreach (var (tg, users) in off) sb.AppendLine($"• {Names(users)} (ID {tg})");
+            if (noTg.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"➖ Без Telegram ID в панели ({noTg.Count}): {string.Join(", ", noTg.Take(40))}" + (noTg.Count > 40 ? " …" : ""));
+            }
             return sb.ToString().TrimEnd();
         }
     }

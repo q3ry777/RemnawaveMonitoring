@@ -162,6 +162,7 @@ public class BotState
     public DateTime? DndUntil { get; set; }                  // старый формат (один на всех) — переносится в Dnd
     public Dictionary<string, DateTime> Dnd { get; set; } = new();   // «не беспокоить» по чатам
     public List<string> Started { get; set; } = new();      // пользователи, нажавшие /start (им можно писать первым)
+    public Dictionary<string, DateTime> StartedAt { get; set; } = new();   // когда подключили бота
     public List<string> NoRemind { get; set; } = new();     // отключили напоминания
     public List<string> Reminded { get; set; } = new();     // уже отправленные напоминания (ключи событий)
     public List<Payment> Payments { get; set; } = new();     // заявки на оплату
