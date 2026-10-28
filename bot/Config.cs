@@ -40,6 +40,9 @@ public class BotConfig : IPanelConfig
     public string PayDetails { get; init; } = "";
     public string Currency { get; init; } = "₽";
     public string WriteToken { get; init; } = "";
+    // API для программы на ПК (вкладка «оплаты»)
+    public string ApiKey { get; init; } = "";
+    public int ApiPort { get; init; } = 8090;
     public HashSet<int> QuietHours { get; init; } = new();
     public TimeSpan DndTime { get; init; } = TimeSpan.FromHours(8);
     public string DataDir { get; init; } = "/data";
@@ -92,6 +95,8 @@ public class BotConfig : IPanelConfig
             PayDetails = Env("PAY_DETAILS").Replace("\\n", "\n"),
             Currency = Env("PAY_CURRENCY", "₽"),
             WriteToken = Env("REMNAWAVE_WRITE_TOKEN"),
+            ApiKey = Env("BOT_API_KEY"),
+            ApiPort = Int("BOT_API_PORT", 8090, 1),
             QuietHours = quiet,
             DndTime = dnd,
             DataDir = Env("DATA_DIR", "/data"),

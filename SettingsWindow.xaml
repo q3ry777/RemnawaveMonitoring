@@ -162,6 +162,17 @@
                     <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
                                Text="Продлевается только профиль с настоящим сроком: профили со сроком до 2099 года считаются бессрочными — у них нет кнопки «Продлить» и напоминаний о сроке. Если подписка ещё действует, продление добавляется к дате окончания, если истекла — считается от момента подтверждения. Заявки и сумма за месяц — кнопка «💳 Оплаты» в боте."/>
 
+                    <CheckBox x:Name="TgApiBox" Style="{StaticResource Check}" Margin="0,16,0,0"
+                              Content="вкладка «оплаты» в программе: заявки и суммы по месяцам из бота"/>
+                    <TextBlock Text="АДРЕС СЕРВЕРА С БОТОМ (IP или домен, не через Cloudflare) И ПОРТ" Style="{StaticResource Field}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="TgApiHostBox" Style="{StaticResource Input}"/>
+                        <TextBox x:Name="TgApiPortBox" Grid.Column="2" Style="{StaticResource Input}"/>
+                    </Grid>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Бот откроет этот порт на сервере (команда установки сама разрешит его в ufw и покажет IP). Запросы подписаны ключом, ответы зашифрованы — посторонние ничего не прочитают. Ключ создаётся автоматически и попадает в команду установки."/>
+
                     <TextBlock Text="ПОЛЬЗОВАТЕЛИ ПАНЕЛИ (по Telegram ID, указанному в панели)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
                     <CheckBox x:Name="TgCabinetBox" Style="{StaticResource Check}"
                               Content="личный кабинет: пользователь видит свои подписки — срок, трафик, устройства и ссылку"/>

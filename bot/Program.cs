@@ -40,6 +40,7 @@ public class Bot
     readonly BotConfig _cfg;
     readonly Telegram _tg;
     readonly Webhook _wh;
+    readonly BotApi _apiServer;
     readonly Api _api = new();
     readonly BotState _state;
     readonly IncidentLog _log;
@@ -60,6 +61,7 @@ public class Bot
         _cfg = cfg;
         _tg = new Telegram(cfg) { OnMessage = OnMessageAsync, OnCallback = OnCallbackAsync };
         _wh = new Webhook(cfg) { OnEvent = OnWebhookAsync };
+        _apiServer = new BotApi(cfg) { Payments = PaymentsReport };
         _state = BotState.Load(cfg.DataDir);
         // старый общий «не беспокоить» → по чатам админов
         if (_state.DndUntil is DateTime old)
@@ -86,6 +88,7 @@ public class Bot
         var rel = Task.Run(() => ReleasesLoopAsync(ct), ct);
         var ipl = Task.Run(() => IpsLoopAsync(ct), ct);
         var wh = Task.Run(() => _wh.RunAsync(ct), ct);
+        var api = Task.Run(() => _apiServer.RunAsync(ct), ct);
         while (!ct.IsCancellationRequested)
         {
             try { await Task.Delay(TimeSpan.FromSeconds(_cfg.IntervalSec), ct); }
@@ -510,7 +513,7 @@ public class Bot
     // ---- клавиатуры ----
     const string BtnMy = "👤 Мои подписки", BtnRemindOff = "🔕 Не напоминать", BtnRemindOn = "🔔 Напоминать",
                  BtnDnd = "🔕 Не беспокоить", BtnPay = "💳 Продлить подписку", BtnPayments = "💳 Оплаты",
-                 BtnBotUsers = "🤝 Бот у пользователей";
+                 BtnBotUsers = "🤝 Бот у пользователей", BtnSupport = "✉️ Написать администратору";
 
     static readonly (string text, string cmd)[] AdminButtons =
     {
@@ -534,6 +537,7 @@ public class Bot
     {
         var rows = new List<string[]> { new[] { BtnMy } };
         if (SubsOf(chat).Any(Payable)) rows.Add(new[] { BtnPay });
+        rows.Add(new[] { BtnSupport });
         if (_cfg.UserReminders) rows.Add(new[] { _state.NoRemind.Contains(chat) ? BtnRemindOn : BtnRemindOff });
         return Telegram.Keyboard(rows.ToArray());
     }
@@ -546,21 +550,29 @@ public class Bot
     const string AdminHelp =
         "Команды (или кнопки внизу):\n" +
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн и с каких IP\n/problems — активные проблемы\n" +
-        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота";
+        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота\n/broadcast текст — рассылка всем, кто подключил бота\n\nНа сообщения пользователей «📨» отвечайте ответом (reply) — бот перешлёт ответ.";
 
-    async Task OnMessageAsync(string chat, string raw, long messageId, bool media, string who)
+    async Task OnMessageAsync(string chat, string raw, long messageId, bool media, string who, string replyTo)
     {
         if (!IsAdmin(chat) && TooFast(chat)) return;
         // посторонний (не админ и нет подписок с его Telegram ID): бот молчит, админам — короткое сообщение
         if (!IsAdmin(chat) && SubsOf(chat).Count == 0) { Stranger(chat, who, media ? "[файл или картинка]" : raw); return; }
+        // ответ админа на сообщение пользователя (reply на «📨 Сообщение от …») — пересылается пользователю
+        if (_cfg.Chats.Contains(chat) && replyTo.StartsWith("📨") &&
+            System.Text.RegularExpressions.Regex.Match(replyTo, @"\(ID (\d+)\)") is { Success: true } rm)
+        {
+            AdminReply(chat, rm.Groups[1].Value, raw, messageId, media);
+            return;
+        }
         // скриншот перевода к заявке на оплату
         if (media && _cfg.PayEnabled)
         {
             string? pid;
             lock (_lock) pid = _state.AwaitProof.GetValueOrDefault(chat);
             if (pid != null) { ForwardProof(chat, pid, messageId); return; }
-            if (raw == "") { _tg.Send(chat, "Файлы и картинки я принимаю только как подтверждение оплаты: сначала выберите тариф и нажмите «Я оплатил».", ChatKeyboard(chat)); return; }
         }
+        // файлы и картинки от пользователя — администратору
+        if (media && !IsAdmin(chat)) { ForwardSupport(chat, who, raw, messageId, true); return; }
         string cmd, arg = "";
         if (raw.StartsWith('/'))
         {
@@ -572,7 +584,7 @@ public class Bot
         {
             var t = Norm(raw);
             cmd = AdminButtons.FirstOrDefault(b => Norm(b.text) == t).cmd
-                  ?? (t == Norm(BtnRemindOff) || t == Norm(BtnRemindOn) ? "/remind" : "");
+                  ?? (t == Norm(BtnRemindOff) || t == Norm(BtnRemindOn) ? "/remind" : t == Norm(BtnSupport) ? "/support" : "");
         }
 
         if (IsAdmin(chat))
@@ -590,11 +602,13 @@ public class Bot
                 "/pay" => null,
                 "/payments" => BuildPayments(),
                 "/botusers" => BuildBotUsers(),
+                "/broadcast" => null,
                 "" => "Не понял. Команды — кнопками внизу или /help.",
                 _ => "Не знаю такой команды.\n\n" + AdminHelp,
             };
             if (cmd == "/my") { await ShowMyAsync(chat); return; }
             if (cmd == "/pay") { StartPay(chat); return; }
+            if (cmd == "/broadcast") { PrepareBroadcast(chat, arg); return; }
             _tg.Send(chat, reply!, AdminKeyboard(chat));
             return;
         }
@@ -617,6 +631,13 @@ public class Bot
             case "/pay":
                 StartPay(chat);
                 break;
+            case "/support":
+                _tg.Send(chat, "Напишите вопрос одним сообщением — можно приложить скриншот или файл. Я передам администратору, ответ придёт сюда.", UserKeyboard(chat));
+                break;
+            case "":
+                // свободный текст — вопрос администратору
+                ForwardSupport(chat, who, raw, messageId, false);
+                break;
             case "/start":
             case "/help":
                 _tg.Send(chat, "Здравствуйте! Здесь можно посмотреть свои подписки: срок, трафик, устройства и ссылку." +
@@ -628,6 +649,66 @@ public class Bot
                 await ShowMyAsync(chat);
                 break;
         }
+    }
+
+    // ---- связь с администратором ----
+    void ForwardSupport(string chat, string who, string text, long messageId, bool media)
+    {
+        var names = string.Join(", ", SubsOf(chat).Select(u => u.Username));
+        var head = $"📨 Сообщение от {names}" + (who != "" ? $" — {who}" : "") + $" (ID {chat})";
+        const string hint = "\n\n↩️ Ответьте на это сообщение (reply) — бот перешлёт ответ.";
+        foreach (var a in _cfg.Chats)
+        {
+            if (media) _tg.Copy(a, chat, messageId, head + (text != "" ? ":\n" + text : "") + hint, null);
+            else _tg.Send(a, head + ":\n" + text + hint, null);
+        }
+        Log.Write($"сообщение администратору от {names}");
+        _tg.Send(chat, "✉️ Передал администратору. Ответ придёт сюда.", UserKeyboard(chat));
+    }
+
+    void AdminReply(string admin, string target, string text, long messageId, bool media)
+    {
+        var names = string.Join(", ", SubsOf(target).Select(u => u.Username));
+        if (names == "") { _tg.Send(admin, $"Не нашёл пользователя с Telegram ID {target} — ответ не отправлен.", AdminKeyboard(admin)); return; }
+        if (media) _tg.Copy(target, admin, messageId, "✉️ Ответ администратора" + (text != "" ? ":\n" + text : ""), null);
+        else _tg.Send(target, "✉️ Ответ администратора:\n" + text, ChatKeyboard(target));
+        _tg.Send(admin, $"✅ Ответ отправлен: {names}", AdminKeyboard(admin));
+        foreach (var a in _cfg.Chats.Where(c => c != admin)) _tg.Send(a, $"↩️ Другой админ ответил {names}:\n{text}", AdminKeyboard(a));
+    }
+
+    // ---- рассылка всем, кто подключил бота (с подтверждением) ----
+    readonly Dictionary<string, string> _broadcasts = new();
+
+    void PrepareBroadcast(string chat, string text)
+    {
+        if (!_cfg.Chats.Contains(chat)) { _tg.Send(chat, "Рассылка доступна только основному админу.", AdminKeyboard(chat)); return; }
+        if (text == "") { _tg.Send(chat, "Напишите: /broadcast и текст сообщения (можно в несколько строк). Получат все, кто подключил бота.", AdminKeyboard(chat)); return; }
+        int n;
+        string id = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
+        lock (_lock)
+        {
+            n = _state.Started.Count(c => !IsAdmin(c) && _byTg.ContainsKey(c));
+            _broadcasts[id] = text;
+        }
+        _tg.Send(chat, $"📢 Рассылку получат {n} чел.:\n\n{text}",
+            Telegram.Inline(new[] { ("✅ Отправить", "bc:" + id), ("Отмена", "bcx:" + id) }));
+    }
+
+    string? Broadcast(string chat, string id, bool send)
+    {
+        if (!_cfg.Chats.Contains(chat)) return "Только для основного админа";
+        string? text;
+        List<string> to;
+        lock (_lock)
+        {
+            if (!_broadcasts.Remove(id, out text)) return "Рассылка уже отправлена или отменена";
+            to = _state.Started.Where(c => !IsAdmin(c) && _byTg.ContainsKey(c)).ToList();
+        }
+        if (!send) { _tg.Send(chat, "Рассылка отменена.", AdminKeyboard(chat)); return null; }
+        foreach (var c in to) _tg.Send(c, "📢 " + text, ChatKeyboard(c));
+        Log.Write($"рассылка: {to.Count} получателей");
+        _tg.Send(chat, $"📢 Рассылка отправлена: {to.Count} чел.", AdminKeyboard(chat));
+        return "Отправлено";
     }
 
     // Не чаще раза в сутки на человека, чтобы не засыпать админов
@@ -719,6 +800,11 @@ public class Bot
     {
         var colon = data.IndexOf(':');
         var kind = colon > 0 ? data[..colon] : data;
+        if (kind is "bc" or "bcx")
+        {
+            await _tg.AnswerCallbackAsync(id, Broadcast(chat, colon > 0 ? data[(colon + 1)..] : "", kind == "bc") ?? "");
+            return;
+        }
         if (kind is "pay" or "plan" or "paid" or "cancel" or "ok" or "no")
         {
             var reply = await PayCallbackAsync(chat, kind, colon > 0 ? data[(colon + 1)..] : "");
@@ -931,6 +1017,15 @@ public class Bot
         var info = PayInfo(p, UserByKey(p.UserUuid));
         foreach (var a in _cfg.Chats) _tg.Copy(a, chat, messageId, "🧾 Скриншот оплаты: " + info, PayButtons(p.Id));
         _tg.Send(chat, "Скриншот передан администратору. Как только оплату подтвердят — напишу.", ChatKeyboard(chat));
+    }
+
+    PaymentsReport PaymentsReport()
+    {
+        lock (_lock)
+            return new PaymentsReport(DateTime.Now, _cfg.Currency, _state.Payments
+                .Where(p => p.Status is "sent" or "ok" or "no" or "busy")
+                .Select(p => new PaymentInfo(p.Id, p.Created, p.Done, p.Status == "busy" ? "sent" : p.Status, p.Username, p.Months, p.Amount, p.NewExpire, p.Chat))
+                .ToList());
     }
 
     string BuildPayments()

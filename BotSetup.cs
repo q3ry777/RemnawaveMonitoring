@@ -17,7 +17,8 @@ public static class BotSetup
         bool Nodes, bool Limits, bool Billing, bool Updates, List<int> QuietHours, string DndTime,
         bool UsersEvents, bool PanelEvents, string Observers, bool Cabinet, bool Reminders, int RemindDays, int RemindTraffic,
         bool Webhook, string WebhookSecret,
-        bool Pay, string PayPlans, string PayDetails, string WriteToken);
+        bool Pay, string PayPlans, string PayDetails, string WriteToken,
+        bool Api, string ApiKey, int ApiPort);
 
     // «1 150» / «3 400» по строке → «1:150,3:400». error — что не так
     public static string ParsePlans(string text, out string error)
@@ -116,6 +117,9 @@ public static class BotSetup
         env.AppendLine("PAY_DETAILS=" + c.PayDetails.Replace("\r", "").Replace("\n", "\\n").Replace("#", "№"));
         env.AppendLine("# токен панели с правом изменять пользователей (для продления после оплаты); пусто — основной токен");
         env.AppendLine("REMNAWAVE_WRITE_TOKEN=" + c.WriteToken);
+        env.AppendLine("# API для вкладки «оплаты» в программе на ПК (порт открыт наружу; запросы подписаны, ответы зашифрованы этим ключом); пусто — выключено");
+        env.AppendLine("BOT_API_KEY=" + (c.Api ? c.ApiKey : ""));
+        env.AppendLine("BOT_API_PORT=" + c.ApiPort);
 
         return $$"""
             bash <<'RWBOT'
@@ -140,6 +144,7 @@ public static class BotSetup
                 container_name: remnawave-bot
                 restart: always
                 env_file: .env
+            {{(c.Api ? $"    ports:\n      - \"{c.ApiPort}:{c.ApiPort}\"" : "")}}
                 volumes:
                   - ./data:/data
                 networks:
@@ -163,6 +168,7 @@ public static class BotSetup
             else
               echo "RW-BOT: cron не найден — автообновление не включено, обновляйте вручную"
             fi
+            {{(c.Api ? ApiScript(c.ApiPort) : "")}}
             sleep 5
             docker logs --tail 15 remnawave-bot
             echo "RW-BOT: готово. Журнал: docker logs -f remnawave-bot"
@@ -200,6 +206,14 @@ public static class BotSetup
         };
         return string.Join("\n", lines);
     }
+
+    // Порт для программы: открыть в ufw (если он включён) и показать адрес сервера
+    static string ApiScript(int port) => string.Join("\n", new[]
+    {
+        $"if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then ufw allow {port}/tcp >/dev/null && echo \"RW-BOT: порт {port} открыт в ufw\"; fi",
+        "IP=$(curl -s -4 --max-time 5 https://ifconfig.me || hostname -I | awk '{print $1}')",
+        $"echo \"RW-BOT: для вкладки «оплаты» в программе укажите адрес сервера $IP и порт {port}\"",
+    });
 
     static HttpClient Client() => new() { Timeout = TimeSpan.FromSeconds(20) };
 

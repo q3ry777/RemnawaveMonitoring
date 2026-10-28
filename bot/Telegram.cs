@@ -26,14 +26,15 @@ public class Telegram
 
     // (чат, текст, id сообщения, есть ли вложение — фото/файл) — входящее сообщение;
     // (чат, id нажатия, данные кнопки) — нажатие inline-кнопки
-    public Func<string, string, long, bool, string, Task>? OnMessage;   // + имя отправителя «Имя Фамилия (@ник)»
+    // + имя отправителя «Имя Фамилия (@ник)» и текст сообщения, на которое ответили (reply), если есть
+    public Func<string, string, long, bool, string, string, Task>? OnMessage;
     public Func<string, string, string, Task>? OnCallback;
 
     public static readonly (string cmd, string desc)[] AdminCommands =
     {
         ("status", "сводка"), ("nodes", "подробности по нодам"), ("users", "кто сейчас онлайн"),
         ("problems", "активные проблемы"), ("version", "версии панели и нод"),
-        ("dnd", "не беспокоить: /dnd 08:00 или /dnd off"), ("my", "мои подписки"), ("payments", "оплаты"), ("botusers", "кто из пользователей подключил бота"), ("help", "список команд"),
+        ("dnd", "не беспокоить: /dnd 08:00 или /dnd off"), ("my", "мои подписки"), ("payments", "оплаты"), ("botusers", "кто из пользователей подключил бота"), ("broadcast", "рассылка: /broadcast текст"), ("help", "список команд"),
     };
 
     public Telegram(BotConfig cfg)
@@ -246,12 +247,13 @@ public class Telegram
                 // сообщения, отправленные задолго до запуска бота, не выполняем
                 if (m.TryGetProperty("date", out var dt) && DateTimeOffset.FromUnixTimeSeconds(dt.GetInt64()).UtcDateTime < _startedUtc.AddMinutes(-2)) continue;
                 var raw = (J.S(m, "text") is { Length: > 0 } tx ? tx : J.S(m, "caption")).Trim();
-                bool media = m.TryGetProperty("photo", out _) || m.TryGetProperty("document", out _);
+                bool media = new[] { "photo", "document", "video", "voice", "audio", "video_note", "sticker", "animation" }.Any(k => m.TryGetProperty(k, out _));
+                var replyTo = m.TryGetProperty("reply_to_message", out var rt) ? (J.S(rt, "text") is { Length: > 0 } rtt ? rtt : J.S(rt, "caption")) : "";
                 if ((raw == "" && !media) || OnMessage == null) continue;
                 var from = m.TryGetProperty("from", out var f) ? f : chatEl;
                 var who = string.Join(" ", new[] { J.S(from, "first_name"), J.S(from, "last_name") }.Where(x => x != ""))
                           + (J.S(from, "username") is { Length: > 0 } nick ? $" (@{nick})" : "");
-                await OnMessage(J.S(chatEl, "id"), raw, m.TryGetProperty("message_id", out var mid) ? mid.GetInt64() : 0, media, who.Trim());
+                await OnMessage(J.S(chatEl, "id"), raw, m.TryGetProperty("message_id", out var mid) ? mid.GetInt64() : 0, media, who.Trim(), replyTo);
             }
             catch (Exception ex) { Log.Write("обработка сообщения: " + ex.Message); }
         }

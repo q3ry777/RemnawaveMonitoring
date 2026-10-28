@@ -45,6 +45,52 @@ public partial class MainWindow : Window
     public Action? OpenJournalRequested;
     public Action? MutesChanged;
     public Action<UserRow>? OpenUserRequested;
+    public Action? PaymentsOpened;
+
+    // ---- вкладка «оплаты» ----
+    public record PaymentRow(string Date, string Username, string Period, string Sum, string Status, string StatusText, string Until);
+
+    public void SetPaymentsEnabled(bool on)
+    {
+        PaymentsTab.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (!on && PaymentsTab.IsChecked == true) UsersTab.IsChecked = true;
+    }
+
+    static string Months(int m) => m % 10 == 1 && m % 100 != 11 ? $"{m} месяц"
+        : m % 10 is >= 2 and <= 4 && (m % 100 < 10 || m % 100 >= 20) ? $"{m} месяца" : $"{m} месяцев";
+
+    public void UpdatePayments(PaymentsReport? r, string error)
+    {
+        if (r == null)
+        {
+            PaySummary.Text = "Оплаты недоступны";
+            PayNote.Text = error;
+            return;
+        }
+        string Money(int v) => $"{v:N0} {r.Currency}";
+        var ok = r.Payments.Where(p => p.Status == "ok").ToList();
+        var now = DateTime.Now;
+        var month = ok.Where(p => (p.Done ?? p.Created).Year == now.Year && (p.Done ?? p.Created).Month == now.Month).ToList();
+        int pending = r.Payments.Count(p => p.Status == "sent");
+        var culture = new System.Globalization.CultureInfo("ru-RU");
+        PaySummary.Text = $"за {now.ToString("MMMM", culture)}: {month.Count} на {Money(month.Sum(p => p.Amount))}"
+                          + $"   ·   всего: {ok.Count} на {Money(ok.Sum(p => p.Amount))}"
+                          + (pending > 0 ? $"   ·   ждут проверки в боте: {pending}" : "");
+        PayMonths.Children.Clear();
+        foreach (var g in ok.GroupBy(p => new DateTime((p.Done ?? p.Created).Year, (p.Done ?? p.Created).Month, 1)).OrderByDescending(g => g.Key).Take(12))
+        {
+            var b = new Border { CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1), Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 8, 6) };
+            b.SetResourceReference(Border.BorderBrushProperty, "Line");
+            var t = new TextBlock { Text = $"{g.Key.ToString("MMM yyyy", culture)} · {Money(g.Sum(p => p.Amount))} ({g.Count()})", FontSize = 12 };
+            b.Child = t;
+            PayMonths.Children.Add(b);
+        }
+        PayNote.Text = error != "" ? error : $"обновлено {r.Generated:HH:mm:ss} · заявки подтверждаются в боте";
+        PaymentsGrid.ItemsSource = r.Payments.OrderByDescending(p => p.Created).Select(p => new PaymentRow(
+            p.Created.ToString("dd.MM.yy HH:mm"), p.Username, Months(p.Months), Money(p.Amount), p.Status,
+            p.Status switch { "ok" => "подтверждена", "no" => "отклонена", _ => "ждёт проверки" },
+            p.NewExpire)).ToList();
+    }
 
     // двойной клик по пользователю — карточка
     void Users_DoubleClick(object sender, MouseButtonEventArgs e)
@@ -268,11 +314,14 @@ public partial class MainWindow : Window
 
     void Tab_Checked(object sender, RoutedEventArgs e)
     {
-        if (UsersPanel == null || NodesPanel == null || SearchBox == null || UsersFilters == null) return;
+        if (UsersPanel == null || NodesPanel == null || PaymentsPanel == null || SearchBox == null || UsersFilters == null) return;
         bool users = UsersTab.IsChecked == true;
         bool nodes = NodesTab.IsChecked == true;
+        bool pays = PaymentsTab.IsChecked == true;
         UsersPanel.Visibility = users ? Visibility.Visible : Visibility.Collapsed;
         NodesPanel.Visibility = nodes ? Visibility.Visible : Visibility.Collapsed;
+        PaymentsPanel.Visibility = pays ? Visibility.Visible : Visibility.Collapsed;
+        if (pays) PaymentsOpened?.Invoke();
         SearchBox.Visibility = users ? Visibility.Visible : Visibility.Hidden;
         UsersFilters.Visibility = users ? Visibility.Visible : Visibility.Collapsed;
     }

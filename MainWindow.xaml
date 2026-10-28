@@ -50,6 +50,7 @@
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                         <RadioButton x:Name="UsersTab" Content="пользователи" IsChecked="True" Style="{StaticResource PillTab}" Checked="Tab_Checked"/>
                         <RadioButton x:Name="NodesTab" Content="ноды" Style="{StaticResource PillTab}" Checked="Tab_Checked"/>
+                        <RadioButton x:Name="PaymentsTab" Content="оплаты" Style="{StaticResource PillTab}" Checked="Tab_Checked" Visibility="Collapsed"/>
                     </StackPanel>
                     <Grid x:Name="SearchBox" DockPanel.Dock="Right" Width="250">
                         <TextBox x:Name="Search" Style="{StaticResource Input}" TextChanged="Search_Changed"/>
@@ -362,6 +363,71 @@
                                                 </TextBlock>
                                             </Grid>
                                         </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <!-- Оплаты (из бота на сервере) -->
+                    <Grid x:Name="PaymentsPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <StackPanel Margin="22,14,30,6">
+                            <TextBlock x:Name="PaySummary" FontWeight="Bold" TextWrapping="Wrap"/>
+                            <WrapPanel x:Name="PayMonths" Margin="0,10,0,0"/>
+                            <TextBlock x:Name="PayNote" FontSize="12" Foreground="{DynamicResource Dim}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Border Grid.Row="1" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,1" Padding="22,10,30,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="110"/><ColumnDefinition Width="130"/><ColumnDefinition Width="120"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="1" Text="ЗАЯВКА" Style="{StaticResource Hdr}"/>
+                                <TextBlock Grid.Column="2" Text="ПОДПИСКА" Style="{StaticResource Hdr}"/>
+                                <TextBlock Grid.Column="3" Text="СРОК" Style="{StaticResource Hdr}"/>
+                                <TextBlock Grid.Column="4" Text="СУММА" Style="{StaticResource Hdr}"/>
+                                <TextBlock Grid.Column="5" Text="СТАТУС" Style="{StaticResource Hdr}"/>
+                                <TextBlock Grid.Column="6" Text="ПРОДЛЕНО ДО" Style="{StaticResource Hdr}"/>
+                            </Grid>
+                        </Border>
+                        <ListBox x:Name="PaymentsGrid" Grid.Row="2" Style="{StaticResource Rows}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Row}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="22"/><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/>
+                                                <ColumnDefinition Width="110"/><ColumnDefinition Width="130"/><ColumnDefinition Width="120"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Width="8" Height="8" HorizontalAlignment="Left">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Setter Property="Fill" Value="{DynamicResource Amber}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="ok"><Setter Property="Fill" Value="{DynamicResource Green}"/></DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="no"><Setter Property="Fill" Value="{DynamicResource Red}"/></DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+                                            <TextBlock Grid.Column="1" Text="{Binding Date}" Foreground="{DynamicResource Dim}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Username}" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding Period}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding Sum}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="5" Text="{Binding StatusText}" FontSize="12" VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Amber}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="ok"><Setter Property="Foreground" Value="{DynamicResource Green}"/></DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="no"><Setter Property="Foreground" Value="{DynamicResource Red}"/></DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="6" Text="{Binding Until}" VerticalAlignment="Center" Foreground="{DynamicResource Dim}"/>
+                                        </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

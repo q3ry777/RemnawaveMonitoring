@@ -70,6 +70,12 @@ public class Settings : IPanelConfig
     public string TgPayPlans { get; set; } = "1 150\n3 400\n6 750\n12 1400";
     public string TgPayDetails { get; set; } = "";
     [JsonIgnore] public string TgWriteToken { get; set; } = "";
+    // Вкладка «оплаты»: бот открывает порт на сервере, программа забирает заявки (запрос подписан, ответ зашифрован)
+    public bool TgApiEnabled { get; set; }
+    public string TgApiHost { get; set; } = "";
+    public int TgApiPort { get; set; } = 8090;
+    [JsonIgnore] public string TgApiKey { get; set; } = "";
+    public string? TgApiKeyEnc { get; set; }
     public string? TgWriteTokenEnc { get; set; }
     public string? TgWebhookSecretEnc { get; set; }
 
@@ -151,6 +157,7 @@ public class Settings : IPanelConfig
             s.UpdateToken = Secret.Unprotect(s.UpdateTokenEnc);
             s.TgWebhookSecret = Secret.Unprotect(s.TgWebhookSecretEnc);
             s.TgWriteToken = Secret.Unprotect(s.TgWriteTokenEnc);
+            s.TgApiKey = Secret.Unprotect(s.TgApiKeyEnc);
             s.TgToken = Secret.Unprotect(s.TgTokenEnc);
             if (s.ApiToken == "" && !string.IsNullOrEmpty(s.Token))
             {
@@ -172,6 +179,7 @@ public class Settings : IPanelConfig
         UpdateTokenEnc = Secret.Protect(UpdateToken);
         TgWebhookSecretEnc = Secret.Protect(TgWebhookSecret);
         TgWriteTokenEnc = Secret.Protect(TgWriteToken);
+        TgApiKeyEnc = Secret.Protect(TgApiKey);
         TgTokenEnc = Secret.Protect(TgToken);
         Directory.CreateDirectory(Dir);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this));

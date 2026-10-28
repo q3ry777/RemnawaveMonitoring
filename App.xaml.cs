@@ -98,6 +98,10 @@ public partial class App : Application
         _win.OpenJournalRequested = OpenJournal;
         _win.MutesChanged = ReapplyExtras;
         _win.OpenUserRequested = OpenUser;
+        _win.PaymentsOpened = () => _ = RefreshPayments();
+        _payTimer.Tick += async (_, _) => await RefreshPayments();
+        _payTimer.Start();
+        _win.SetPaymentsEnabled(PaymentsOn);
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть", null, (_, _) => ShowWin());
@@ -172,6 +176,8 @@ public partial class App : Application
         var w = new SettingsWindow(_s);
         if (w.ShowDialog() != true) return;
         _s.Save();
+        _win.SetPaymentsEnabled(PaymentsOn);
+        _ = RefreshPayments();
         _timer.Interval = TimeSpan.FromSeconds(_s.IntervalSec);
         _ = Refresh(true);
         _ = CheckAppUpdateAsync();
@@ -325,6 +331,33 @@ public partial class App : Application
         _prev = ApplyExtras(_prev);
         _win.Update(_prev);
         UpdateCards();
+    }
+
+    // ---- вкладка «оплаты»: заявки из бота на сервере (раз в 5 минут и при открытии вкладки) ----
+    readonly DispatcherTimer _payTimer = new() { Interval = TimeSpan.FromMinutes(5) };
+    bool _payBusy;
+    PaymentsReport? _payments;
+
+    bool PaymentsOn => _s.TgApiEnabled && _s.TgApiHost != "" && _s.TgApiKey != "";
+
+    async Task RefreshPayments()
+    {
+        if (!PaymentsOn || _payBusy) return;
+        _payBusy = true;
+        try
+        {
+            _payments = await BotApiClient.GetPaymentsAsync(_s.TgApiHost, _s.TgApiPort, _s.TgApiKey);
+            _win.UpdatePayments(_payments, "");
+        }
+        catch (Exception ex)
+        {
+            var msg = ex is System.Net.Http.HttpRequestException or TaskCanceledException
+                ? $"нет связи с ботом ({_s.TgApiHost}:{_s.TgApiPort}): проверьте адрес и что команда установки выполнена с включённой вкладкой «оплаты»"
+                : ex.Message;
+            if (_payments != null) _win.UpdatePayments(_payments, "⚠ " + msg);
+            else _win.UpdatePayments(null, msg);
+        }
+        finally { _payBusy = false; }
     }
 
     // ---- карточки пользователей (по одной на пользователя) ----
