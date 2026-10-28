@@ -26,7 +26,7 @@ public class Telegram
 
     // (чат, текст, id сообщения, есть ли вложение — фото/файл) — входящее сообщение;
     // (чат, id нажатия, данные кнопки) — нажатие inline-кнопки
-    public Func<string, string, long, bool, Task>? OnMessage;
+    public Func<string, string, long, bool, string, Task>? OnMessage;   // + имя отправителя «Имя Фамилия (@ник)»
     public Func<string, string, string, Task>? OnCallback;
 
     public static readonly (string cmd, string desc)[] AdminCommands =
@@ -248,7 +248,10 @@ public class Telegram
                 var raw = (J.S(m, "text") is { Length: > 0 } tx ? tx : J.S(m, "caption")).Trim();
                 bool media = m.TryGetProperty("photo", out _) || m.TryGetProperty("document", out _);
                 if ((raw == "" && !media) || OnMessage == null) continue;
-                await OnMessage(J.S(chatEl, "id"), raw, m.TryGetProperty("message_id", out var mid) ? mid.GetInt64() : 0, media);
+                var from = m.TryGetProperty("from", out var f) ? f : chatEl;
+                var who = string.Join(" ", new[] { J.S(from, "first_name"), J.S(from, "last_name") }.Where(x => x != ""))
+                          + (J.S(from, "username") is { Length: > 0 } nick ? $" (@{nick})" : "");
+                await OnMessage(J.S(chatEl, "id"), raw, m.TryGetProperty("message_id", out var mid) ? mid.GetInt64() : 0, media, who.Trim());
             }
             catch (Exception ex) { Log.Write("обработка сообщения: " + ex.Message); }
         }

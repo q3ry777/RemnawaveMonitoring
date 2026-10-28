@@ -165,7 +165,8 @@ public class BotState
     public List<string> NoRemind { get; set; } = new();     // отключили напоминания
     public List<string> Reminded { get; set; } = new();     // уже отправленные напоминания (ключи событий)
     public List<Payment> Payments { get; set; } = new();     // заявки на оплату
-    public Dictionary<string, string> AwaitProof { get; set; } = new();   // чат → заявка, к которой ждём скриншот
+    public Dictionary<string, string> AwaitProof { get; set; } = new();
+    public Dictionary<string, DateTime> Strangers { get; set; } = new();   // посторонние, о которых уже сообщили (не чаще раза в сутки)   // чат → заявка, к которой ждём скриншот
     public List<string> Alerted { get; set; } = new();     // уже отправленные тревоги по пользователям (лимит, подписка)
     public bool Seeded { get; set; }                         // первый снимок уже был — дальше всё новое считается событием
     public string? LatestNode { get; set; }

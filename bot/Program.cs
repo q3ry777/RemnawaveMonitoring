@@ -546,9 +546,11 @@ public class Bot
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн и с каких IP\n/problems — активные проблемы\n" +
         "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты";
 
-    async Task OnMessageAsync(string chat, string raw, long messageId, bool media)
+    async Task OnMessageAsync(string chat, string raw, long messageId, bool media, string who)
     {
         if (!IsAdmin(chat) && TooFast(chat)) return;
+        // посторонний (не админ и нет подписок с его Telegram ID): бот молчит, админам — короткое сообщение
+        if (!IsAdmin(chat) && SubsOf(chat).Count == 0) { Stranger(chat, who, media ? "[файл или картинка]" : raw); return; }
         // скриншот перевода к заявке на оплату
         if (media && _cfg.PayEnabled)
         {
@@ -597,12 +599,6 @@ public class Bot
         // пользователи панели
         if (!_cfg.UserCabinet && !_cfg.UserReminders) return;   // бот только для админов — посторонним не отвечаем
         var subs = SubsOf(chat);
-        if (subs.Count == 0)
-        {
-            _tg.Send(chat, "У вас нет подписок, привязанных к этому Telegram.\n\n" +
-                           $"Ваш Telegram ID: {chat} — передайте его администратору, чтобы он указал его в вашей подписке.", null);
-            return;
-        }
         MarkStarted(chat, subs);
         switch (cmd)
         {
@@ -629,6 +625,22 @@ public class Bot
                 await ShowMyAsync(chat);
                 break;
         }
+    }
+
+    // Не чаще раза в сутки на человека, чтобы не засыпать админов
+    void Stranger(string chat, string who, string text)
+    {
+        lock (_lock)
+        {
+            if (_state.Strangers.TryGetValue(chat, out var last) && DateTime.Now - last < TimeSpan.FromDays(1)) return;
+            _state.Strangers[chat] = DateTime.Now;
+            if (_state.Strangers.Count > 500)
+                foreach (var old in _state.Strangers.OrderBy(x => x.Value).Take(_state.Strangers.Count - 500).Select(x => x.Key).ToList()) _state.Strangers.Remove(old);
+            _state.Save(_cfg.DataDir);
+        }
+        if (text.Length > 100) text = text[..100] + "…";
+        Alert("strangers", $"👀 Боту написал посторонний: {(who != "" ? who : "без имени")}, Telegram ID {chat}\n«{text}»\n" +
+                           "Бот ему не ответил. Чтобы дать доступ — впишите этот ID в поле Telegram ID его подписки в панели.");
     }
 
     bool TooFast(string chat)
