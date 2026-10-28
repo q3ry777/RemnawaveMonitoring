@@ -150,7 +150,7 @@
 
                     <TextBlock Text="ПОЛЬЗОВАТЕЛИ ПАНЕЛИ (по Telegram ID, указанному в панели)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
                     <CheckBox x:Name="TgCabinetBox" Style="{StaticResource Check}"
-                              Content="личный кабинет: пользователь видит свои подписки — срок, трафик, устройства, ссылку и QR-код"/>
+                              Content="личный кабинет: пользователь видит свои подписки — срок, трафик, устройства и ссылку"/>
                     <CheckBox x:Name="TgRemindBox" Style="{StaticResource Check}" Margin="0,8,0,0"
                               Content="напоминать пользователям об окончании подписки и трафика"/>
                     <StackPanel Orientation="Horizontal" Margin="28,8,0,0">

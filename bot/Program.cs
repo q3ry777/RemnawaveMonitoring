@@ -578,7 +578,7 @@ public class Bot
                 break;
             case "/start":
             case "/help":
-                _tg.Send(chat, "Здравствуйте! Здесь можно посмотреть свои подписки: срок, трафик, устройства, ссылку и QR-код." +
+                _tg.Send(chat, "Здравствуйте! Здесь можно посмотреть свои подписки: срок, трафик, устройства и ссылку." +
                                (_cfg.UserReminders && !_state.NoRemind.Contains(chat) ? "\nЯ напомню, когда подписка будет истекать или закончится трафик." : ""),
                          UserKeyboard(chat));
                 await ShowMyAsync(chat);
@@ -622,7 +622,7 @@ public class Bot
         var now = Api.Now;
         var sb = new StringBuilder($"👤 Ваши подписки ({subs.Count}):\n\n");
         foreach (var u in subs) sb.AppendLine(SubLine(u, now));
-        sb.Append("\nНажмите на подписку, чтобы открыть подробности, ссылку и QR-код.");
+        sb.Append("\nНажмите на подписку, чтобы открыть подробности и ссылку.");
         _tg.Send(chat, sb.ToString(), Telegram.Inline(subs.Select(u => (u.Username, "sub:" + (u.UserUuid != "" ? u.UserUuid : u.Username)))));
     }
 
@@ -694,12 +694,6 @@ public class Bot
         sb.AppendLine(u.IsOnline ? "Сейчас подключено" : u.Online != "—" ? $"Последнее подключение: {u.Online}" : "Ещё не подключались");
         if (u.SubscriptionUrl != "") sb.Append($"\nСсылка на подписку:\n{u.SubscriptionUrl}");
         _tg.Send(chat, sb.ToString().TrimEnd(), ChatKeyboard(chat));
-
-        if (u.SubscriptionUrl != "")
-        {
-            try { _tg.SendPhoto(chat, Qr.Png(Qr.Encode(u.SubscriptionUrl), 8), $"QR-код подписки «{u.Username}» — отсканируйте в приложении (Happ, v2rayTun и т.п.)", ChatKeyboard(chat)); }
-            catch (Exception ex) { Log.Write("QR: " + ex.Message); }
-        }
     }
 
     // ---- команды админа ----
