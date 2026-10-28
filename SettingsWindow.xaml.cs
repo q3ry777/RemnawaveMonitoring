@@ -34,6 +34,15 @@ public partial class SettingsWindow : Window
         TgBillingBox.IsChecked = s.TgBilling;
         TgUpdatesBox.IsChecked = s.TgUpdates;
         TgDndTimeBox.Text = s.TgDndTime;
+        TgUsersEvBox.IsChecked = s.TgUsersEvents;
+        TgPanelEvBox.IsChecked = s.TgPanelEvents;
+        TgWebhookBox.IsChecked = s.TgWebhook;
+        TgObserversBox.Text = s.TgObservers.Replace("\n", "\r\n");
+        TgCabinetBox.IsChecked = s.TgCabinet;
+        TgRemindBox.IsChecked = s.TgReminders;
+        TgRemindDaysBox.Text = s.TgRemindDays.ToString();
+        TgRemindTrafficBox.Text = s.TgRemindTraffic.ToString();
+        ToastsBox.IsChecked = s.ToastsEnabled;
         for (int h = 0; h < 24; h++)
         {
             var b = new ToggleButton { Content = h.ToString("00"), Style = (Style)FindResource("HourToggle"), IsChecked = s.TgQuietHours.Contains(h) };
@@ -85,6 +94,15 @@ public partial class SettingsWindow : Window
         _s.TgBilling = TgBillingBox.IsChecked == true;
         _s.TgUpdates = TgUpdatesBox.IsChecked == true;
         if (Settings.TryParseTime(TgDndTimeBox.Text, out var dnd)) _s.TgDndTime = dnd.ToString(@"hh\:mm");
+        _s.TgUsersEvents = TgUsersEvBox.IsChecked == true;
+        _s.TgPanelEvents = TgPanelEvBox.IsChecked == true;
+        _s.TgWebhook = TgWebhookBox.IsChecked == true;
+        _s.TgObservers = TgObserversBox.Text.Replace("\r\n", "\n").Trim();
+        _s.TgCabinet = TgCabinetBox.IsChecked == true;
+        _s.TgReminders = TgRemindBox.IsChecked == true;
+        _s.TgRemindDays = RemindDays();
+        _s.TgRemindTraffic = RemindTraffic();
+        _s.ToastsEnabled = ToastsBox.IsChecked == true;
         _s.TgQuietHours = SelectedHours();
         _s.TgQuietEnabled = TgQuietBox.IsChecked == true && _s.TgQuietHours.Count > 0;
         _s.Theme = LightRb.IsChecked == true ? "light" : "dark";
@@ -136,6 +154,11 @@ public partial class SettingsWindow : Window
         TgResult.SetResourceReference(TextBlock.ForegroundProperty, brush);
     }
 
+    int RemindDays() => int.TryParse(TgRemindDaysBox.Text.Trim(), out var d) && d is >= 1 and <= 30 ? d : 3;
+    int RemindTraffic() => int.TryParse(TgRemindTrafficBox.Text.Trim().TrimEnd('%'), out var p) && p is >= 50 and <= 99 ? p : 90;
+
+    void WhatsNew_Click(object sender, RoutedEventArgs e) => WhatsNew.Show(this, Changelog.Load().Take(6).ToList(), "что нового");
+
     void TgCopy_Click(object sender, RoutedEventArgs e)
     {
         var token = TgTokenBox.Password.Trim();
@@ -144,10 +167,16 @@ public partial class SettingsWindow : Window
         if (token == "" || chat == "") { TgResultText("Нужны токен бота и ID чата.", "Red"); return; }
         if (api == "") { TgResultText("Нужен API-токен панели (раздел «панель»).", "Red"); return; }
         if (!Settings.TryParseTime(TgDndTimeBox.Text, out var dnd)) { TgResultText("Время «не беспокоить» — в формате ЧЧ:ММ, например 08:00.", "Red"); return; }
+        var observers = BotSetup.ParseObservers(TgObserversBox.Text.Replace("\r\n", "\n"), out var obsErr);
+        if (obsErr != "") { TgResultText("Дополнительные админы: " + obsErr, "Red"); return; }
+        if (_s.TgWebhookSecret == "") { _s.TgWebhookSecret = BotSetup.NewSecret(); _s.Save(); }   // секрет вебхуков сразу сохраняется
         var cfg = new BotSetup.Config(api, token, chat,
             int.TryParse(OnlineBox.Text, out var w) && w >= 30 ? w : 300,
             TgNodesBox.IsChecked == true, TgLimitsBox.IsChecked == true, TgBillingBox.IsChecked == true, TgUpdatesBox.IsChecked == true,
-            TgQuietBox.IsChecked == true ? SelectedHours() : new List<int>(), dnd.ToString(@"hh\:mm"));
+            TgQuietBox.IsChecked == true ? SelectedHours() : new List<int>(), dnd.ToString(@"hh\:mm"),
+            TgUsersEvBox.IsChecked == true, TgPanelEvBox.IsChecked == true, observers,
+            TgCabinetBox.IsChecked == true, TgRemindBox.IsChecked == true, RemindDays(), RemindTraffic(),
+            TgWebhookBox.IsChecked == true, _s.TgWebhookSecret);
         try
         {
             Clipboard.SetText(BotSetup.Command(cfg));

@@ -130,6 +130,37 @@
                     <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="лимиты трафика и подписки пользователей"/>
                     <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="оплата серверов"/>
                     <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="новые версии панели и нод"/>
+                    <CheckBox x:Name="TgUsersEvBox" Style="{StaticResource Check}" Margin="0,8,0,0"
+                              Content="события пользователей: создан, удалён, впервые подключился, новое устройство, трафик закончился"/>
+                    <CheckBox x:Name="TgPanelEvBox" Style="{StaticResource Check}" Margin="0,8,0,0"
+                              Content="входы в панель (в том числе неудачные), перезапуск панели, API-токены"/>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Последние два вида приходят только через вебхуки панели (ниже)."/>
+
+                    <CheckBox x:Name="TgWebhookBox" Style="{StaticResource Check}" Margin="0,20,0,0"
+                              Content="вебхуки панели — события приходят сразу"/>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Команда установки сама впишет WEBHOOK_ENABLED, WEBHOOK_URL и WEBHOOK_SECRET_HEADER в /opt/remnawave/.env (с резервной копией .env.rw-bot-backup) и перезапустит панель — примерно 20 секунд. Если в панели уже есть свои вебхуки, адрес бота добавится к ним."/>
+
+                    <TextBlock Text="ДОПОЛНИТЕЛЬНЫЕ АДМИНЫ (по одному в строке: Telegram ID и что присылать)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
+                    <TextBox x:Name="TgObserversBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="70"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Виды через запятую: nodes — ноды, limits — лимиты и подписки, billing — оплата, updates — версии, users — события пользователей, panel — входы в панель. Без списка — всё. Пример: 123456789 nodes,billing. Им доступны те же команды на просмотр и своё «не беспокоить»."/>
+
+                    <TextBlock Text="ПОЛЬЗОВАТЕЛИ ПАНЕЛИ (по Telegram ID, указанному в панели)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
+                    <CheckBox x:Name="TgCabinetBox" Style="{StaticResource Check}"
+                              Content="личный кабинет: пользователь видит свои подписки — срок, трафик, устройства, ссылку и QR-код"/>
+                    <CheckBox x:Name="TgRemindBox" Style="{StaticResource Check}" Margin="0,8,0,0"
+                              Content="напоминать пользователям об окончании подписки и трафика"/>
+                    <StackPanel Orientation="Horizontal" Margin="28,8,0,0">
+                        <TextBlock Text="за дней до конца" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="0,0,8,0"/>
+                        <TextBox x:Name="TgRemindDaysBox" Style="{StaticResource Input}" Width="60"/>
+                        <TextBlock Text="при трафике от, %" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="18,0,8,0"/>
+                        <TextBox x:Name="TgRemindTrafficBox" Style="{StaticResource Input}" Width="60"/>
+                    </StackPanel>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Один Telegram ID может стоять у нескольких пользователей — человек увидит все свои подписки по названиям. Писать первым бот может только тем, кто хоть раз нажал /start; сколько таких — видно в «Сводке» бота."/>
 
                     <TextBlock Text="КНОПКА «НЕ БЕСПОКОИТЬ» В БОТЕ — ТИШИНА ДО" Style="{StaticResource Field}" Margin="0,22,0,6"/>
                     <TextBox x:Name="TgDndTimeBox" Style="{StaticResource Input}" Width="90" HorizontalAlignment="Left"
@@ -175,6 +206,8 @@
                     <PasswordBox x:Name="UpdateTokenBox" Style="{StaticResource InputPwd}"/>
                     <Button Content="проверить обновления" Style="{StaticResource Btn}" Margin="0,16,0,0"
                             HorizontalAlignment="Left" Click="CheckUpdate_Click"/>
+                    <Button Content="что нового" Style="{StaticResource Btn}" Margin="0,10,0,0"
+                            HorizontalAlignment="Left" Click="WhatsNew_Click"/>
                 </StackPanel>
             </ScrollViewer>
 
@@ -208,6 +241,8 @@
                     </StackPanel>
                     <CheckBox x:Name="AutoBox" Style="{StaticResource Check}" Margin="0,22,0,0"
                               Content="запускать вместе с Windows (свёрнуто в трей)"/>
+                    <CheckBox x:Name="ToastsBox" Style="{StaticResource Check}" Margin="0,12,0,0"
+                              Content="уведомления Windows нового вида: остаются в центре уведомлений, с кнопками «журнал» и «карточка»"/>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

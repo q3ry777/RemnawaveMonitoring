@@ -147,6 +147,13 @@ public partial class App : Application
         catch { }
 
         if (!e.Args.Contains("--tray")) ShowWin();
+
+        // уведомления нового вида: нажатие открывает журнал, карточку пользователя или окно
+        Toast.Activated = act => Dispatcher.BeginInvoke(new Action(() => OnToast(act)));
+        Toast.Init();
+        // «что нового» — после обновления программы
+        bool updated = e.Args.Contains("--updated");
+        Dispatcher.BeginInvoke(new Action(() => Changelog.ShowIfNew(_s, updated, _win)), DispatcherPriority.ApplicationIdle);
         _ = Refresh();
         _ = RefreshReleases();
         _ = CheckAppUpdateAsync();
@@ -519,16 +526,34 @@ public partial class App : Application
         if (!seed)
         {
             var fresh = now.Where(kv => !_alerted.Contains(kv.Key)).Select(kv => kv.Value).ToList();
+            var freshKeys = now.Keys.Where(k => !_alerted.Contains(k)).ToList();
+            var freshUsers = freshKeys.Select(k => k[..k.LastIndexOf('|')]).Distinct().ToList();
+            string? userKey = null;
+            if (freshUsers.Count == 1 && s.Users.FirstOrDefault(x => x.Username == freshUsers[0]) is UserRow one)
+                userKey = one.UserUuid != "" ? one.UserUuid : one.Username;
             if (fresh.Count > 0)
                 Balloon(string.Join("\n", fresh.Take(3)) + (fresh.Count > 3 ? $"\nи ещё {fresh.Count - 3}…" : ""),
-                    Forms.ToolTipIcon.Warning);
+                    Forms.ToolTipIcon.Warning, userKey: userKey);
         }
         _alerted.Clear();
         foreach (var k in now.Keys) _alerted.Add(k);
     }
 
-    void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false)
+    void OnToast(string act)
     {
+        if (act == "journal") { OpenJournal(); AckAll(); return; }
+        if (act.StartsWith("user:"))
+        {
+            var key = act[5..];
+            if (_prev?.Users.FirstOrDefault(x => x.UserUuid == key || x.Username == key) is UserRow u) { ShowWin(); OpenUser(u); return; }
+        }
+        ShowWin();
+    }
+
+    void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false, string? userKey = null)
+    {
+        // уведомление нового вида (центр уведомлений Windows); если не вышло — старое всплывающее
+        if (_s.ToastsEnabled && Toast.Show(text, incident, userKey)) return;
         _balloonIncident = incident;
         _balloonShownAt = DateTime.Now;
         _tray.ShowBalloonTip(5000, "Remnawave", text, icon);

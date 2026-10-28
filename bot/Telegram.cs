@@ -11,53 +11,29 @@ using System.Threading.Tasks;
 
 namespace RemnawaveMonitor;
 
-// Telegram: long polling команд и очередь отправки (с повтором, если API недоступен)
+// Telegram: long polling (сообщения и нажатия inline-кнопок) и очередь отправки с повтором, если API недоступен.
+// Кто пишет и что ему отвечать — решает Bot.
 public class Telegram
 {
     readonly BotConfig _cfg;
     readonly HttpClient _http;
-    readonly ConcurrentQueue<(string chat, string text, DateTime at)> _queue = new();
+    readonly ConcurrentQueue<Outgoing> _queue = new();
     readonly SemaphoreSlim _signal = new(0);
     readonly DateTime _startedUtc = DateTime.UtcNow;
     long _offset;
 
-    // (команда, аргумент, чат) -> ответ; null — не команда
-    public Func<string, string, Task<string?>>? Handler;
+    record Outgoing(string Chat, string Text, string? Markup, byte[]? Photo, DateTime At);
 
-    public static readonly (string cmd, string desc)[] Commands =
+    // (чат, текст) — входящее сообщение; (чат, id нажатия, данные кнопки) — нажатие inline-кнопки
+    public Func<string, string, Task>? OnMessage;
+    public Func<string, string, string, Task>? OnCallback;
+
+    public static readonly (string cmd, string desc)[] AdminCommands =
     {
         ("status", "сводка"), ("nodes", "подробности по нодам"), ("users", "кто сейчас онлайн"),
         ("problems", "активные проблемы"), ("version", "версии панели и нод"),
-        ("dnd", "не беспокоить: /dnd 08:00 или /dnd off"), ("help", "список команд"),
+        ("dnd", "не беспокоить: /dnd 08:00 или /dnd off"), ("my", "мои подписки"), ("help", "список команд"),
     };
-
-    public const string DndButton = "🔕 Не беспокоить";
-
-    static readonly (string text, string cmd)[] Buttons =
-    {
-        ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
-        ("⚠️ Проблемы", "/problems"), ("ℹ️ Версии", "/version"), (DndButton, "/dnd"),
-    };
-
-    static string Norm(string s) => s.Replace("️", "").Trim();
-
-    // клавиатура прикладывается к каждому сообщению: меню всегда на месте
-    static readonly string KeyboardJson = JsonSerializer.Serialize(new
-    {
-        keyboard = new[]
-        {
-            new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" },
-            new[] { "⚠️ Проблемы", "ℹ️ Версии", DndButton },
-        },
-        is_persistent = true,
-        resize_keyboard = true,
-        input_field_placeholder = "Выберите команду…",
-    });
-
-    public const string Help =
-        "Команды (или кнопки внизу):\n" +
-        "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн и с каких IP\n/problems — активные проблемы\n" +
-        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени";
 
     public Telegram(BotConfig cfg)
     {
@@ -73,12 +49,44 @@ public class Telegram
 
     string Url(string method) => $"{_cfg.TelegramApi.TrimEnd('/')}/bot{_cfg.BotToken}/{method}";
 
-    public void Send(string text, string? chat = null)
+    // Постоянная клавиатура внизу чата
+    public static string Keyboard(params string[][] rows) => JsonSerializer.Serialize(new
+    {
+        keyboard = rows,
+        is_persistent = true,
+        resize_keyboard = true,
+        input_field_placeholder = "Выберите команду…",
+    });
+
+    // Кнопки под сообщением: (текст, данные)
+    public static string Inline(IEnumerable<(string text, string data)> buttons, int perRow = 2) => JsonSerializer.Serialize(new
+    {
+        inline_keyboard = buttons.Select((b, i) => (b, i)).GroupBy(x => x.i / perRow)
+            .Select(g => g.Select(x => new { text = x.b.text, callback_data = x.b.data }).ToArray()).ToArray(),
+    });
+
+    public void Send(string chat, string text, string? markup)
     {
         if (text.Length > 3900) text = text[..3900] + "\n…";
-        foreach (var c in chat != null ? new[] { chat } : _cfg.Chats.ToArray())
-            _queue.Enqueue((c, text, DateTime.Now));
+        _queue.Enqueue(new Outgoing(chat, text, markup, null, DateTime.Now));
         _signal.Release();
+    }
+
+    public void SendPhoto(string chat, byte[] png, string caption, string? markup)
+    {
+        if (caption.Length > 1000) caption = caption[..1000] + "…";
+        _queue.Enqueue(new Outgoing(chat, caption, markup, png, DateTime.Now));
+        _signal.Release();
+    }
+
+    public async Task AnswerCallbackAsync(string id, string text = "")
+    {
+        try
+        {
+            using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["callback_query_id"] = id, ["text"] = text });
+            using var res = await _http.PostAsync(Url("answerCallbackQuery"), content);
+        }
+        catch { }
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -92,20 +100,31 @@ public class Telegram
             catch (Exception ex)
             {
                 Log.Write("telegram: " + ex.Message);
-                await Task.Delay(5000, ct);
+                try { await Task.Delay(5000, ct); } catch (OperationCanceledException) { break; }
             }
         }
         await sender;
     }
 
+    // Меню «/» — только для админов; остальным Telegram показывает пустой список
     async Task RegisterCommandsAsync()
     {
         try
         {
-            var json = JsonSerializer.Serialize(new { commands = Commands.Select(c => new { command = c.cmd, description = c.desc }) });
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var res = await _http.PostAsync(Url("setMyCommands"), content);
-            if (!res.IsSuccessStatusCode) Log.Write("setMyCommands: " + await Describe(res));
+            foreach (var chat in _cfg.AllAdminChats)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    commands = AdminCommands.Select(c => new { command = c.cmd, description = c.desc }),
+                    scope = new { type = "chat", chat_id = long.TryParse(chat, out var id) ? id : 0 },
+                });
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                using var res = await _http.PostAsync(Url("setMyCommands"), content);
+                if (!res.IsSuccessStatusCode) Log.Write("setMyCommands: " + await Describe(res));
+            }
+            var user = JsonSerializer.Serialize(new { commands = new[] { new { command = "my", description = "мои подписки" } } });
+            using var c2 = new StringContent(user, Encoding.UTF8, "application/json");
+            using var r2 = await _http.PostAsync(Url("setMyCommands"), c2);
         }
         catch (Exception ex) { Log.Write("setMyCommands: " + ex.Message); }
     }
@@ -131,28 +150,49 @@ public class Telegram
             catch (OperationCanceledException) { return; }
             while (_queue.TryPeek(out var m))
             {
-                if (DateTime.Now - m.at > TimeSpan.FromMinutes(30)) { _queue.TryDequeue(out _); continue; }   // устаревшее не шлём
+                if (DateTime.Now - m.At > TimeSpan.FromMinutes(30)) { _queue.TryDequeue(out _); continue; }   // устаревшее не шлём
                 bool done;
                 try
                 {
-                    using var content = new FormUrlEncodedContent(new Dictionary<string, string>
-                        { ["chat_id"] = m.chat, ["text"] = m.text, ["reply_markup"] = KeyboardJson });
-                    using var res = await _http.PostAsync(Url("sendMessage"), content, ct);
-                    int code = (int)res.StatusCode;
-                    if (!res.IsSuccessStatusCode) Log.Write("sendMessage: " + await Describe(res));
-                    done = code < 500 && code != 429;   // ошибки настройки (4xx) не повторяем бесконечно
+                    HttpResponseMessage res;
+                    if (m.Photo != null)
+                    {
+                        using var form = new MultipartFormDataContent
+                        {
+                            { new StringContent(m.Chat), "chat_id" },
+                            { new StringContent(m.Text), "caption" },
+                            { new ByteArrayContent(m.Photo), "photo", "qr.png" },
+                        };
+                        if (m.Markup != null) form.Add(new StringContent(m.Markup), "reply_markup");
+                        res = await _http.PostAsync(Url("sendPhoto"), form, ct);
+                    }
+                    else
+                    {
+                        var fields = new Dictionary<string, string> { ["chat_id"] = m.Chat, ["text"] = m.Text, ["disable_web_page_preview"] = "true" };
+                        if (m.Markup != null) fields["reply_markup"] = m.Markup;
+                        using var content = new FormUrlEncodedContent(fields);
+                        res = await _http.PostAsync(Url("sendMessage"), content, ct);
+                    }
+                    using (res)
+                    {
+                        int code = (int)res.StatusCode;
+                        if (!res.IsSuccessStatusCode) Log.Write($"отправка в {m.Chat}: " + await Describe(res));
+                        done = code < 500 && code != 429;   // ошибки настройки и «бот заблокирован» (4xx) не повторяем
+                    }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
-                catch (Exception ex) { Log.Write("sendMessage: " + ex.Message); done = false; }
-                if (!done) { await Task.Delay(5000, ct); break; }
+                catch (Exception ex) { Log.Write("отправка: " + ex.Message); done = false; }
+                if (!done) { try { await Task.Delay(5000, ct); } catch (OperationCanceledException) { return; } break; }
                 _queue.TryDequeue(out _);
+                await Task.Delay(40, ct);   // не упираться в лимиты Telegram при рассылке
             }
         }
     }
 
     async Task PollAsync(CancellationToken ct)
     {
-        var url = Url("getUpdates") + "?timeout=50&allowed_updates=%5B%22message%22%5D" + (_offset > 0 ? $"&offset={_offset}" : "");
+        var url = Url("getUpdates") + "?timeout=50&allowed_updates=" + Uri.EscapeDataString("[\"message\",\"callback_query\"]")
+                  + (_offset > 0 ? $"&offset={_offset}" : "");
         using var res = await _http.GetAsync(url, ct);
         if (!res.IsSuccessStatusCode)
         {
@@ -169,38 +209,24 @@ public class Telegram
         {
             long id = u.GetProperty("update_id").GetInt64();
             _offset = Math.Max(_offset, id + 1);
-            if (!u.TryGetProperty("message", out var m) || !m.TryGetProperty("chat", out var chatEl)) continue;
-            var chat = chatEl.GetProperty("id").GetInt64().ToString();
-            if (!_cfg.Chats.Contains(chat)) continue;   // чужим не отвечаем
-            // сообщения, отправленные задолго до запуска бота, не выполняем
-            if (m.TryGetProperty("date", out var dt) && DateTimeOffset.FromUnixTimeSeconds(dt.GetInt64()).UtcDateTime < _startedUtc.AddMinutes(-2)) continue;
-
-            var raw = J.S(m, "text").Trim();
-            if (raw == "") continue;
-
-            string cmd, arg = "";
-            if (raw.StartsWith('/'))
+            try
             {
-                var parts = raw.Split(new[] { ' ', '\n' }, 2, StringSplitOptions.RemoveEmptyEntries);
-                cmd = parts[0].Split('@')[0].ToLowerInvariant();
-                if (parts.Length > 1) arg = parts[1].Trim();
+                if (u.TryGetProperty("callback_query", out var cb))
+                {
+                    var chat = J.S(cb, "message", "chat", "id");
+                    if (chat == "") chat = J.S(cb, "from", "id");
+                    if (OnCallback != null) await OnCallback(chat, J.S(cb, "id"), J.S(cb, "data"));
+                    continue;
+                }
+                if (!u.TryGetProperty("message", out var m) || !m.TryGetProperty("chat", out var chatEl)) continue;
+                if (J.S(chatEl, "type") is var type && type != "" && type != "private" && !_cfg.AllAdminChats.Contains(J.S(chatEl, "id"))) continue;   // группы — только админские
+                // сообщения, отправленные задолго до запуска бота, не выполняем
+                if (m.TryGetProperty("date", out var dt) && DateTimeOffset.FromUnixTimeSeconds(dt.GetInt64()).UtcDateTime < _startedUtc.AddMinutes(-2)) continue;
+                var raw = J.S(m, "text").Trim();
+                if (raw == "" || OnMessage == null) continue;
+                await OnMessage(J.S(chatEl, "id"), raw);
             }
-            else
-            {
-                var btn = Buttons.FirstOrDefault(b => Norm(b.text) == Norm(raw));
-                if (btn.cmd != null) cmd = btn.cmd;
-                else { Send("Не понял. Команды — кнопками внизу или /help.", chat); continue; }
-            }
-
-            string? reply;
-            if (cmd is "/start" or "/help") reply = Help;
-            else
-            {
-                try { reply = Handler == null ? null : await Handler(cmd, arg); }
-                catch (Exception ex) { reply = "Ошибка: " + ex.Message; }
-                reply ??= "Не знаю такой команды.\n\n" + Help;
-            }
-            Send(reply, chat);
+            catch (Exception ex) { Log.Write("обработка сообщения: " + ex.Message); }
         }
     }
 }

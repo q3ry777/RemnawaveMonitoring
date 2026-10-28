@@ -14,7 +14,39 @@ public static class BotSetup
     public const string Image = "ghcr.io/q3ry777/remnawave-bot:latest";
 
     public record Config(string ApiToken, string BotToken, string ChatId, int OnlineWindowSec,
-        bool Nodes, bool Limits, bool Billing, bool Updates, List<int> QuietHours, string DndTime);
+        bool Nodes, bool Limits, bool Billing, bool Updates, List<int> QuietHours, string DndTime,
+        bool UsersEvents, bool PanelEvents, string Observers, bool Cabinet, bool Reminders, int RemindDays, int RemindTraffic,
+        bool Webhook, string WebhookSecret);
+
+    public static readonly string[] Kinds = { "nodes", "limits", "billing", "updates", "users", "panel" };
+
+    // Секрет подписи вебхуков: 64 символа a-z, A-Z, 0-9 (требование панели)
+    public static string NewSecret()
+    {
+        const string abc = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        return new string(System.Security.Cryptography.RandomNumberGenerator.GetItems<char>(abc, 64));
+    }
+
+    // «123456789 nodes,billing» по строке → «123456789:nodes,billing;…». error — что не так
+    public static string ParseObservers(string text, out string error)
+    {
+        error = "";
+        var parts = new List<string>();
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line == "" || line.StartsWith('#')) continue;
+            var t = line.Split(new[] { ' ', '\t', ':', ';' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (!long.TryParse(t[0], out _)) { error = $"«{line}»: в начале строки должен быть числовой Telegram ID"; continue; }
+            var kinds = t.Length > 1
+                ? t[1].Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim().ToLowerInvariant()).ToList()
+                : new List<string>();
+            var bad = kinds.Where(k => !Kinds.Contains(k)).ToList();
+            if (bad.Count > 0) error = $"«{line}»: неизвестно {string.Join(", ", bad)} (можно: {string.Join(", ", Kinds)})";
+            parts.Add(t[0] + ":" + string.Join(",", kinds.Where(Kinds.Contains)));
+        }
+        return string.Join(";", parts);
+    }
 
     // Часовой пояс для бота — как на этом компьютере (IANA, например Asia/Novosibirsk)
     public static string TimeZone()
@@ -45,6 +77,19 @@ public static class BotSetup
         env.AppendLine("# тихие часы: номера часов через запятую (23 = с 23:00 до 23:59), пусто — выключено");
         env.AppendLine("QUIET_HOURS=" + string.Join(",", c.QuietHours.OrderBy(h => h)));
         env.AppendLine("DND_TIME=" + c.DndTime);
+        env.AppendLine("# события из вебхуков панели: пользователи (создан, удалён, впервые подключился, новое устройство…) и панель (входы, перезапуск, API-токены)");
+        env.AppendLine("NOTIFY_USERS=" + B(c.UsersEvents));
+        env.AppendLine("NOTIFY_PANEL=" + B(c.PanelEvents));
+        env.AppendLine("# дополнительные админы: ID:виды;ID:виды (виды: " + string.Join(",", Kinds) + "; пусто — все)");
+        env.AppendLine("TELEGRAM_OBSERVERS=" + c.Observers);
+        env.AppendLine("# пользователи панели с Telegram ID: личный кабинет и напоминания");
+        env.AppendLine("USER_CABINET=" + B(c.Cabinet));
+        env.AppendLine("USER_REMINDERS=" + B(c.Reminders));
+        env.AppendLine("REMIND_DAYS=" + c.RemindDays);
+        env.AppendLine("REMIND_TRAFFIC=" + c.RemindTraffic);
+        env.AppendLine("# вебхуки панели: секрет совпадает с WEBHOOK_SECRET_HEADER в /opt/remnawave/.env; пусто — выключено");
+        env.AppendLine("WEBHOOK_SECRET=" + (c.Webhook ? c.WebhookSecret : ""));
+        env.AppendLine("WEBHOOK_PORT=8080");
 
         return $$"""
             bash <<'RWBOT'
@@ -60,6 +105,7 @@ public static class BotSetup
             {{env.ToString().TrimEnd()}}
             RWENV
             chmod 600 .env
+            {{(c.Webhook ? WebhookScript(c.WebhookSecret) : "")}}
             umask 022
             cat > docker-compose.yml <<'RWCOMPOSE'
             services:
@@ -96,6 +142,37 @@ public static class BotSetup
             echo "RW-BOT: готово. Журнал: docker logs -f remnawave-bot"
             RWBOT
             """;
+    }
+
+    // Включение вебхуков в панели: /opt/remnawave/.env (с резервной копией) и перезапуск панели, если что-то поменялось.
+    // Если у панели уже есть свои вебхуки — адрес бота добавляется к ним, и бот берёт их секрет.
+    static string WebhookScript(string secret)
+    {
+        var lines = new[]
+        {
+            "P=/opt/remnawave/.env",
+            "if [ -f \"$P\" ]; then",
+            "  val(){ grep -E \"^$1=\" \"$P\" | tail -1 | cut -d= -f2- | tr -d \"\\\"' \\r\"; }",
+            "  CUR_EN=$(val WEBHOOK_ENABLED); CUR_URL=$(val WEBHOOK_URL); CUR_SECRET=$(val WEBHOOK_SECRET_HEADER)",
+            "  SECRET=" + secret,
+            "  URL=http://remnawave-bot:8080/webhook",
+            "  if [ \"$CUR_EN\" = \"true\" ] && [ ${#CUR_SECRET} -ge 32 ]; then SECRET=\"$CUR_SECRET\"; fi",
+            "  case \",$CUR_URL,\" in *\",$URL,\"*) NEWURL=\"$CUR_URL\" ;; *) if [ \"$CUR_EN\" = \"true\" ] && [ -n \"$CUR_URL\" ]; then NEWURL=\"$CUR_URL,$URL\"; else NEWURL=\"$URL\"; fi ;; esac",
+            "  sed -i \"s|^WEBHOOK_SECRET=.*|WEBHOOK_SECRET=$SECRET|\" .env",
+            "  if [ \"$CUR_EN\" != \"true\" ] || [ \"$CUR_URL\" != \"$NEWURL\" ] || [ \"$CUR_SECRET\" != \"$SECRET\" ]; then",
+            "    cp \"$P\" \"$P.rw-bot-backup\"",
+            "    setkv(){ if grep -qE \"^$1=\" \"$P\"; then sed -i \"s|^$1=.*|$1=$2|\" \"$P\"; else printf '\\n%s=%s\\n' \"$1\" \"$2\" >> \"$P\"; fi; }",
+            "    setkv WEBHOOK_ENABLED true; setkv WEBHOOK_URL \"$NEWURL\"; setkv WEBHOOK_SECRET_HEADER \"$SECRET\"",
+            "    echo \"RW-BOT: включаю вебхуки в /opt/remnawave/.env (копия: .env.rw-bot-backup) и перезапускаю панель…\"",
+            "    (cd /opt/remnawave && docker compose up -d) || echo \"RW-BOT: не удалось перезапустить панель — выполните: cd /opt/remnawave && docker compose up -d\"",
+            "  else",
+            "    echo \"RW-BOT: вебхуки панели уже настроены\"",
+            "  fi",
+            "else",
+            "  echo \"RW-BOT: /opt/remnawave/.env не найден — вебхуки не настроены. В .env панели задайте: WEBHOOK_ENABLED=true, WEBHOOK_URL=http://remnawave-bot:8080/webhook, WEBHOOK_SECRET_HEADER=<как WEBHOOK_SECRET в /opt/remnawave-bot/.env>\"",
+            "fi",
+        };
+        return string.Join("\n", lines);
     }
 
     static HttpClient Client() => new() { Timeout = TimeSpan.FromSeconds(20) };

@@ -56,6 +56,20 @@ public class Settings : IPanelConfig
     public string TgDndTime { get; set; } = "08:00";            // кнопка «не беспокоить» в боте — до этого времени
     public bool TgQuietEnabled { get; set; }
     public List<int> TgQuietHours { get; set; } = new() { 23, 0, 1, 2, 3, 4, 5, 6, 7 };
+    public bool TgUsersEvents { get; set; } = true;     // события пользователей (вебхуки)
+    public bool TgPanelEvents { get; set; } = true;     // входы в панель и события панели (вебхуки)
+    public string TgObservers { get; set; } = "";       // доп. админы: «ID виды» по строке
+    public bool TgCabinet { get; set; } = true;         // личный кабинет пользователей
+    public bool TgReminders { get; set; } = true;       // напоминания пользователям
+    public int TgRemindDays { get; set; } = 3;
+    public int TgRemindTraffic { get; set; } = 90;
+    public bool TgWebhook { get; set; } = true;         // вебхуки панели (команда установки настраивает панель)
+    [JsonIgnore] public string TgWebhookSecret { get; set; } = "";
+    public string? TgWebhookSecretEnc { get; set; }
+
+    // Программа: уведомления Windows нового вида и «что нового» после обновления
+    public bool ToastsEnabled { get; set; } = true;
+    public string? LastChangelog { get; set; }
 
     // «23:00–08:00, 13:00–14:00» по набору часов
     public static string QuietRangesText(IEnumerable<int> hours)
@@ -129,6 +143,7 @@ public class Settings : IPanelConfig
             s.ApiToken = Secret.Unprotect(s.TokenEnc);
             s.MetricsPass = Secret.Unprotect(s.MetricsPassEnc);
             s.UpdateToken = Secret.Unprotect(s.UpdateTokenEnc);
+            s.TgWebhookSecret = Secret.Unprotect(s.TgWebhookSecretEnc);
             s.TgToken = Secret.Unprotect(s.TgTokenEnc);
             if (s.ApiToken == "" && !string.IsNullOrEmpty(s.Token))
             {
@@ -148,6 +163,7 @@ public class Settings : IPanelConfig
         TokenEnc = Secret.Protect(ApiToken);
         MetricsPassEnc = Secret.Protect(MetricsPass);
         UpdateTokenEnc = Secret.Protect(UpdateToken);
+        TgWebhookSecretEnc = Secret.Protect(TgWebhookSecret);
         TgTokenEnc = Secret.Protect(TgToken);
         Directory.CreateDirectory(Dir);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this));

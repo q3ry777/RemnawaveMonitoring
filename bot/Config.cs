@@ -22,6 +22,18 @@ public class BotConfig : IPanelConfig
     public bool NotifyLimits { get; init; } = true;
     public bool NotifyBilling { get; init; } = true;
     public bool NotifyUpdates { get; init; } = true;
+    public bool NotifyUsers { get; init; } = true;      // события пользователей (вебхуки): создан, удалён, впервые подключился, новое устройство…
+    public bool NotifyPanel { get; init; } = true;      // входы в панель, перезапуск панели, API-токены (вебхуки)
+    // Дополнительные админы: чат → что присылать (nodes, limits, billing, updates, users, panel)
+    public Dictionary<string, HashSet<string>> Observers { get; init; } = new();
+    // Пользователи панели (по Telegram ID): личный кабинет и напоминания
+    public bool UserCabinet { get; init; } = true;
+    public bool UserReminders { get; init; } = true;
+    public int RemindDays { get; init; } = 3;
+    public int RemindTraffic { get; init; } = 90;
+    // Вебхуки панели: бот слушает http://remnawave-bot:{WebhookPort}/webhook, подпись — WEBHOOK_SECRET
+    public string WebhookSecret { get; init; } = "";
+    public int WebhookPort { get; init; } = 8080;
     public HashSet<int> QuietHours { get; init; } = new();
     public TimeSpan DndTime { get; init; } = TimeSpan.FromHours(8);
     public string DataDir { get; init; } = "/data";
@@ -60,11 +72,48 @@ public class BotConfig : IPanelConfig
             NotifyLimits = Flag("NOTIFY_LIMITS", true),
             NotifyBilling = Flag("NOTIFY_BILLING", true),
             NotifyUpdates = Flag("NOTIFY_UPDATES", true),
+            NotifyUsers = Flag("NOTIFY_USERS", true),
+            NotifyPanel = Flag("NOTIFY_PANEL", true),
+            Observers = ParseObservers(Env("TELEGRAM_OBSERVERS")),
+            UserCabinet = Flag("USER_CABINET", true),
+            UserReminders = Flag("USER_REMINDERS", true),
+            RemindDays = Int("REMIND_DAYS", 3, 1),
+            RemindTraffic = Math.Min(99, Int("REMIND_TRAFFIC", 90, 50)),
+            WebhookSecret = Env("WEBHOOK_SECRET"),
+            WebhookPort = Int("WEBHOOK_PORT", 8080, 1),
             QuietHours = quiet,
             DndTime = dnd,
             DataDir = Env("DATA_DIR", "/data"),
         };
     }
+
+    public static readonly string[] Kinds = { "nodes", "limits", "billing", "updates", "users", "panel" };
+
+    // «123:nodes,billing;456:nodes» (пустой список видов — всё)
+    static Dictionary<string, HashSet<string>> ParseObservers(string text)
+    {
+        var map = new Dictionary<string, HashSet<string>>();
+        foreach (var part in text.Split(new[] { ';', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split(':', 2);
+            var id = kv[0].Trim();
+            if (id == "" || !long.TryParse(id, out _)) continue;
+            var kinds = kv.Length > 1
+                ? kv[1].Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim().ToLowerInvariant()).Where(Kinds.Contains).ToHashSet()
+                : new HashSet<string>();
+            map[id] = kinds.Count > 0 ? kinds : Kinds.ToHashSet();
+        }
+        return map;
+    }
+
+    public IEnumerable<string> AllAdminChats => Chats.Concat(Observers.Keys).Distinct();
+
+    // Вид тревоги включён для основных админов
+    public bool KindEnabled(string kind) => kind switch
+    {
+        "nodes" => NotifyNodes, "limits" => NotifyLimits, "billing" => NotifyBilling, "updates" => NotifyUpdates,
+        "users" => NotifyUsers, "panel" => NotifyPanel, _ => true,
+    };
 
     public List<string> Problems()
     {
@@ -83,7 +132,11 @@ public class BotConfig : IPanelConfig
 // Состояние между перезапусками (/data/state.json)
 public class BotState
 {
-    public DateTime? DndUntil { get; set; }
+    public DateTime? DndUntil { get; set; }                  // старый формат (один на всех) — переносится в Dnd
+    public Dictionary<string, DateTime> Dnd { get; set; } = new();   // «не беспокоить» по чатам
+    public List<string> Started { get; set; } = new();      // пользователи, нажавшие /start (им можно писать первым)
+    public List<string> NoRemind { get; set; } = new();     // отключили напоминания
+    public List<string> Reminded { get; set; } = new();     // уже отправленные напоминания (ключи событий)
     public List<string> Alerted { get; set; } = new();     // уже отправленные тревоги по пользователям (лимит, подписка)
     public bool Seeded { get; set; }                         // первый снимок уже был — дальше всё новое считается событием
     public string? LatestNode { get; set; }
