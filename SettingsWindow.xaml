@@ -148,6 +148,20 @@
                     <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
                                Text="Виды через запятую: nodes — ноды, limits — лимиты и подписки, billing — оплата, updates — версии, users — события пользователей, panel — входы в панель. Без списка — всё. Пример: 123456789 nodes,billing. Им доступны те же команды на просмотр и своё «не беспокоить»."/>
 
+                    <TextBlock Text="ОПЛАТА ПЕРЕВОДОМ (подтверждаете вы, подписка продлевается сама)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
+                    <CheckBox x:Name="TgPayBox" Style="{StaticResource Check}"
+                              Content="принимать оплату в боте: «💳 Продлить» → тариф → реквизиты → «Я оплатил» → вы подтверждаете"/>
+                    <TextBlock Text="ТАРИФЫ (по строке: месяцев и цена, например «3 400»)" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="TgPlansBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="90" Width="220" HorizontalAlignment="Left"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
+                    <TextBlock Text="РЕКВИЗИТЫ ДЛЯ ПЕРЕВОДА (что увидит пользователь)" Style="{StaticResource Field}"/>
+                    <TextBox x:Name="TgPayDetailsBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="70"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" VerticalContentAlignment="Top"/>
+                    <TextBlock Text="API-ТОКЕН С ПРАВОМ ИЗМЕНЯТЬ ПОЛЬЗОВАТЕЛЕЙ (пусто — основной; хранится зашифрованным)" Style="{StaticResource Field}"/>
+                    <PasswordBox x:Name="TgWriteTokenBox" Style="{StaticResource InputPwd}"/>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Продлевается только профиль с настоящим сроком: профили со сроком до 2099 года считаются бессрочными — у них нет кнопки «Продлить» и напоминаний о сроке. Если подписка ещё действует, продление добавляется к дате окончания, если истекла — считается от момента подтверждения. Заявки и сумма за месяц — кнопка «💳 Оплаты» в боте."/>
+
                     <TextBlock Text="ПОЛЬЗОВАТЕЛИ ПАНЕЛИ (по Telegram ID, указанному в панели)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
                     <CheckBox x:Name="TgCabinetBox" Style="{StaticResource Check}"
                               Content="личный кабинет: пользователь видит свои подписки — срок, трафик, устройства и ссылку"/>

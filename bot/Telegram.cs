@@ -22,17 +22,18 @@ public class Telegram
     readonly DateTime _startedUtc = DateTime.UtcNow;
     long _offset;
 
-    record Outgoing(string Chat, string Text, string? Markup, byte[]? Photo, DateTime At);
+    record Outgoing(string Chat, string Text, string? Markup, byte[]? Photo, DateTime At, string? FromChat = null, long MessageId = 0);
 
-    // (чат, текст) — входящее сообщение; (чат, id нажатия, данные кнопки) — нажатие inline-кнопки
-    public Func<string, string, Task>? OnMessage;
+    // (чат, текст, id сообщения, есть ли вложение — фото/файл) — входящее сообщение;
+    // (чат, id нажатия, данные кнопки) — нажатие inline-кнопки
+    public Func<string, string, long, bool, Task>? OnMessage;
     public Func<string, string, string, Task>? OnCallback;
 
     public static readonly (string cmd, string desc)[] AdminCommands =
     {
         ("status", "сводка"), ("nodes", "подробности по нодам"), ("users", "кто сейчас онлайн"),
         ("problems", "активные проблемы"), ("version", "версии панели и нод"),
-        ("dnd", "не беспокоить: /dnd 08:00 или /dnd off"), ("my", "мои подписки"), ("help", "список команд"),
+        ("dnd", "не беспокоить: /dnd 08:00 или /dnd off"), ("my", "мои подписки"), ("payments", "оплаты"), ("help", "список команд"),
     };
 
     public Telegram(BotConfig cfg)
@@ -65,6 +66,12 @@ public class Telegram
             .Select(g => g.Select(x => new { text = x.b.text, callback_data = x.b.data }).ToArray()).ToArray(),
     });
 
+    // Кнопки под сообщением по строкам
+    public static string InlineRows(IEnumerable<(string text, string data)[]> rows) => JsonSerializer.Serialize(new
+    {
+        inline_keyboard = rows.Select(r => r.Select(b => new { text = b.text, callback_data = b.data }).ToArray()).ToArray(),
+    });
+
     public void Send(string chat, string text, string? markup)
     {
         if (text.Length > 3900) text = text[..3900] + "\n…";
@@ -76,6 +83,14 @@ public class Telegram
     {
         if (caption.Length > 1000) caption = caption[..1000] + "…";
         _queue.Enqueue(new Outgoing(chat, caption, markup, png, DateTime.Now));
+        _signal.Release();
+    }
+
+    // Копия сообщения (например, скриншот оплаты) в другой чат — с подписью и кнопками
+    public void Copy(string toChat, string fromChat, long messageId, string caption, string? markup)
+    {
+        if (caption.Length > 1000) caption = caption[..1000] + "…";
+        _queue.Enqueue(new Outgoing(toChat, caption, markup, null, DateTime.Now, fromChat, messageId));
         _signal.Release();
     }
 
@@ -122,7 +137,7 @@ public class Telegram
                 using var res = await _http.PostAsync(Url("setMyCommands"), content);
                 if (!res.IsSuccessStatusCode) Log.Write("setMyCommands: " + await Describe(res));
             }
-            var user = JsonSerializer.Serialize(new { commands = new[] { new { command = "my", description = "мои подписки" } } });
+            var user = JsonSerializer.Serialize(new { commands = new[] { new { command = "my", description = "мои подписки" }, new { command = "pay", description = "продлить подписку" } } });
             using var c2 = new StringContent(user, Encoding.UTF8, "application/json");
             using var r2 = await _http.PostAsync(Url("setMyCommands"), c2);
         }
@@ -155,7 +170,15 @@ public class Telegram
                 try
                 {
                     HttpResponseMessage res;
-                    if (m.Photo != null)
+                    if (m.FromChat != null)
+                    {
+                        var fields = new Dictionary<string, string>
+                            { ["chat_id"] = m.Chat, ["from_chat_id"] = m.FromChat, ["message_id"] = m.MessageId.ToString(), ["caption"] = m.Text };
+                        if (m.Markup != null) fields["reply_markup"] = m.Markup;
+                        using var content = new FormUrlEncodedContent(fields);
+                        res = await _http.PostAsync(Url("copyMessage"), content, ct);
+                    }
+                    else if (m.Photo != null)
                     {
                         using var form = new MultipartFormDataContent
                         {
@@ -222,9 +245,10 @@ public class Telegram
                 if (J.S(chatEl, "type") is var type && type != "" && type != "private" && !_cfg.AllAdminChats.Contains(J.S(chatEl, "id"))) continue;   // группы — только админские
                 // сообщения, отправленные задолго до запуска бота, не выполняем
                 if (m.TryGetProperty("date", out var dt) && DateTimeOffset.FromUnixTimeSeconds(dt.GetInt64()).UtcDateTime < _startedUtc.AddMinutes(-2)) continue;
-                var raw = J.S(m, "text").Trim();
-                if (raw == "" || OnMessage == null) continue;
-                await OnMessage(J.S(chatEl, "id"), raw);
+                var raw = (J.S(m, "text") is { Length: > 0 } tx ? tx : J.S(m, "caption")).Trim();
+                bool media = m.TryGetProperty("photo", out _) || m.TryGetProperty("document", out _);
+                if ((raw == "" && !media) || OnMessage == null) continue;
+                await OnMessage(J.S(chatEl, "id"), raw, m.TryGetProperty("message_id", out var mid) ? mid.GetInt64() : 0, media);
             }
             catch (Exception ex) { Log.Write("обработка сообщения: " + ex.Message); }
         }

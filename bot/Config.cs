@@ -34,6 +34,12 @@ public class BotConfig : IPanelConfig
     // Вебхуки панели: бот слушает http://remnawave-bot:{WebhookPort}/webhook, подпись — WEBHOOK_SECRET
     public string WebhookSecret { get; init; } = "";
     public int WebhookPort { get; init; } = 8080;
+    // Оплата переводом с подтверждением админом: тарифы (месяцев, цена), реквизиты, токен с правом продления
+    public bool PayEnabled { get; init; }
+    public List<(int months, int price)> PayPlans { get; init; } = new();
+    public string PayDetails { get; init; } = "";
+    public string Currency { get; init; } = "₽";
+    public string WriteToken { get; init; } = "";
     public HashSet<int> QuietHours { get; init; } = new();
     public TimeSpan DndTime { get; init; } = TimeSpan.FromHours(8);
     public string DataDir { get; init; } = "/data";
@@ -81,6 +87,11 @@ public class BotConfig : IPanelConfig
             RemindTraffic = Math.Min(99, Int("REMIND_TRAFFIC", 90, 50)),
             WebhookSecret = Env("WEBHOOK_SECRET"),
             WebhookPort = Int("WEBHOOK_PORT", 8080, 1),
+            PayEnabled = Flag("PAY_ENABLED", false),
+            PayPlans = ParsePlans(Env("PAY_PLANS", "1:150,3:400,6:750,12:1400")),
+            PayDetails = Env("PAY_DETAILS").Replace("\\n", "\n"),
+            Currency = Env("PAY_CURRENCY", "₽"),
+            WriteToken = Env("REMNAWAVE_WRITE_TOKEN"),
             QuietHours = quiet,
             DndTime = dnd,
             DataDir = Env("DATA_DIR", "/data"),
@@ -105,6 +116,22 @@ public class BotConfig : IPanelConfig
         }
         return map;
     }
+
+    // «1:150,3:400» — месяцев:цена
+    static List<(int, int)> ParsePlans(string text)
+    {
+        var list = new List<(int, int)>();
+        foreach (var part in text.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split(':');
+            if (kv.Length == 2 && int.TryParse(kv[0], out var m) && int.TryParse(kv[1], out var p) && m is > 0 and <= 36 && p >= 0) list.Add((m, p));
+        }
+        return list.OrderBy(x => x.Item1).ToList();
+    }
+
+    // Для продления подписки — отдельный токен с правом записи, если задан
+    public IPanelConfig Writer => new WriterConfig(BaseUrl, WriteToken != "" ? WriteToken : ApiToken, OnlineWindowSec);
+    record WriterConfig(string BaseUrl, string ApiToken, int OnlineWindowSec) : IPanelConfig;
 
     public IEnumerable<string> AllAdminChats => Chats.Concat(Observers.Keys).Distinct();
 
@@ -137,6 +164,8 @@ public class BotState
     public List<string> Started { get; set; } = new();      // пользователи, нажавшие /start (им можно писать первым)
     public List<string> NoRemind { get; set; } = new();     // отключили напоминания
     public List<string> Reminded { get; set; } = new();     // уже отправленные напоминания (ключи событий)
+    public List<Payment> Payments { get; set; } = new();     // заявки на оплату
+    public Dictionary<string, string> AwaitProof { get; set; } = new();   // чат → заявка, к которой ждём скриншот
     public List<string> Alerted { get; set; } = new();     // уже отправленные тревоги по пользователям (лимит, подписка)
     public bool Seeded { get; set; }                         // первый снимок уже был — дальше всё новое считается событием
     public string? LatestNode { get; set; }
@@ -163,6 +192,22 @@ public class BotState
         }
         catch (Exception ex) { Log.Write("не удалось сохранить состояние: " + ex.Message); }
     }
+}
+
+// Заявка на оплату: пользователь выбрал тариф → «я оплатил» → админ подтверждает → подписка продлевается
+public class Payment
+{
+    public string Id { get; set; } = "";
+    public string Chat { get; set; } = "";
+    public string UserUuid { get; set; } = "";
+    public string Username { get; set; } = "";
+    public int Months { get; set; }
+    public int Amount { get; set; }
+    public string Status { get; set; } = "new";   // new — выбран тариф, sent — ждёт проверки, ok — подтверждена, no — отклонена, cancel — отменена
+    public DateTime Created { get; set; } = DateTime.Now;
+    public DateTime? Done { get; set; }
+    public string By { get; set; } = "";
+    public string NewExpire { get; set; } = "";
 }
 
 public static class Log

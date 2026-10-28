@@ -65,6 +65,12 @@ public class Settings : IPanelConfig
     public int TgRemindTraffic { get; set; } = 90;
     public bool TgWebhook { get; set; } = true;         // вебхуки панели (команда установки настраивает панель)
     [JsonIgnore] public string TgWebhookSecret { get; set; } = "";
+    // Оплата переводом с подтверждением: тарифы «месяцев цена» по строке, реквизиты, токен с правом продления
+    public bool TgPayEnabled { get; set; }
+    public string TgPayPlans { get; set; } = "1 150\n3 400\n6 750\n12 1400";
+    public string TgPayDetails { get; set; } = "";
+    [JsonIgnore] public string TgWriteToken { get; set; } = "";
+    public string? TgWriteTokenEnc { get; set; }
     public string? TgWebhookSecretEnc { get; set; }
 
     // Программа: уведомления Windows нового вида и «что нового» после обновления
@@ -144,6 +150,7 @@ public class Settings : IPanelConfig
             s.MetricsPass = Secret.Unprotect(s.MetricsPassEnc);
             s.UpdateToken = Secret.Unprotect(s.UpdateTokenEnc);
             s.TgWebhookSecret = Secret.Unprotect(s.TgWebhookSecretEnc);
+            s.TgWriteToken = Secret.Unprotect(s.TgWriteTokenEnc);
             s.TgToken = Secret.Unprotect(s.TgTokenEnc);
             if (s.ApiToken == "" && !string.IsNullOrEmpty(s.Token))
             {
@@ -164,6 +171,7 @@ public class Settings : IPanelConfig
         MetricsPassEnc = Secret.Protect(MetricsPass);
         UpdateTokenEnc = Secret.Protect(UpdateToken);
         TgWebhookSecretEnc = Secret.Protect(TgWebhookSecret);
+        TgWriteTokenEnc = Secret.Protect(TgWriteToken);
         TgTokenEnc = Secret.Protect(TgToken);
         Directory.CreateDirectory(Dir);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this));

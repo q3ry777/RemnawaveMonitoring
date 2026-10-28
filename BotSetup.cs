@@ -16,7 +16,27 @@ public static class BotSetup
     public record Config(string ApiToken, string BotToken, string ChatId, int OnlineWindowSec,
         bool Nodes, bool Limits, bool Billing, bool Updates, List<int> QuietHours, string DndTime,
         bool UsersEvents, bool PanelEvents, string Observers, bool Cabinet, bool Reminders, int RemindDays, int RemindTraffic,
-        bool Webhook, string WebhookSecret);
+        bool Webhook, string WebhookSecret,
+        bool Pay, string PayPlans, string PayDetails, string WriteToken);
+
+    // «1 150» / «3 400» по строке → «1:150,3:400». error — что не так
+    public static string ParsePlans(string text, out string error)
+    {
+        error = "";
+        var parts = new List<string>();
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line == "") continue;
+            var t = line.Split(new[] { ' ', '\t', ':', '-', '—' }, StringSplitOptions.RemoveEmptyEntries);
+            if (t.Length < 2 || !int.TryParse(t[0], out var m) || m is < 1 or > 36 ||
+                !int.TryParse(new string(t[1].Where(char.IsDigit).ToArray()), out var p))
+            { error = $"«{line}»: нужно «месяцев цена», например «3 400»"; continue; }
+            parts.Add($"{m}:{p}");
+        }
+        if (parts.Count == 0 && error == "") error = "добавьте хотя бы один тариф, например «1 150»";
+        return string.Join(",", parts);
+    }
 
     public static readonly string[] Kinds = { "nodes", "limits", "billing", "updates", "users", "panel" };
 
@@ -90,6 +110,12 @@ public static class BotSetup
         env.AppendLine("# вебхуки панели: секрет совпадает с WEBHOOK_SECRET_HEADER в /opt/remnawave/.env; пусто — выключено");
         env.AppendLine("WEBHOOK_SECRET=" + (c.Webhook ? c.WebhookSecret : ""));
         env.AppendLine("WEBHOOK_PORT=8080");
+        env.AppendLine("# оплата переводом с подтверждением админом: тарифы месяцев:цена, реквизиты (\\n — перенос строки)");
+        env.AppendLine("PAY_ENABLED=" + B(c.Pay));
+        env.AppendLine("PAY_PLANS=" + c.PayPlans);
+        env.AppendLine("PAY_DETAILS=" + c.PayDetails.Replace("\r", "").Replace("\n", "\\n").Replace("#", "№"));
+        env.AppendLine("# токен панели с правом изменять пользователей (для продления после оплаты); пусто — основной токен");
+        env.AppendLine("REMNAWAVE_WRITE_TOKEN=" + c.WriteToken);
 
         return $$"""
             bash <<'RWBOT'

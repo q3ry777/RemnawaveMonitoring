@@ -146,6 +146,55 @@ public class Api
         return await res.Content.ReadAsStringAsync();
     }
 
+    // Запрос с телом JSON; при ошибке — текст ответа панели в исключении (чтобы было видно причину)
+    async Task<(int code, string body)> SendJsonAsync(IPanelConfig s, HttpMethod method, string path, object body)
+    {
+        using var req = Request(s, method, path);
+        req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        using var res = await _http.SendAsync(req);
+        return ((int)res.StatusCode, await res.Content.ReadAsStringAsync());
+    }
+
+    static string PanelError(int code, string body)
+    {
+        try
+        {
+            using var d = JsonDocument.Parse(body);
+            var m = J.S(d.RootElement, "message");
+            if (m != "") return $"{code}: {m}";
+        }
+        catch { }
+        return code == 401 || code == 403 ? $"{code}: у API-токена нет права изменять пользователей" : $"ошибка {code}";
+    }
+
+    // Продление подписки на months месяцев. Панель 3.x: POST /api/users/{id}/actions/extend (если подписка истекла —
+    // от сегодняшнего дня, иначе от текущей даты окончания); 2.x: PATCH /api/users с новой датой. -> новая дата окончания
+    public async Task<DateTimeOffset> ExtendUserAsync(IPanelConfig s, UserRow u, int months)
+    {
+        DateTimeOffset.TryParse(u.Raw != "" ? J.S(JsonDocument.Parse(u.Raw).RootElement, "expireAt") : "", CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal, out var exp);
+        var now = Now;
+        var from = exp > now ? exp : now;
+        var target = from.AddMonths(months);
+        int days = Math.Max(1, (int)Math.Round((target - from).TotalDays));
+
+        if (u.UserId != "")
+        {
+            var (code, body) = await SendJsonAsync(s, HttpMethod.Post, $"/api/users/{u.UserId}/actions/extend", new { days });
+            if (code is >= 200 and < 300)
+            {
+                using var d = JsonDocument.Parse(body);
+                return DateTimeOffset.TryParse(J.S(d.RootElement, "response", "expireAt"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var e) ? e : target;
+            }
+            if (code != 404 && code != 405) throw new Exception(PanelError(code, body));
+        }
+        // старая панель: новая дата целиком
+        var (c2, b2) = await SendJsonAsync(s, HttpMethod.Patch, "/api/users",
+            new Dictionary<string, object> { ["uuid"] = u.UserUuid, ["expireAt"] = target.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"), ["status"] = "ACTIVE" });
+        if (c2 is >= 200 and < 300) return target;
+        throw new Exception(PanelError(c2, b2));
+    }
+
     async Task<string> GetAsync(IPanelConfig s, string path, int attempts = 3)
     {
         Exception? last = null;

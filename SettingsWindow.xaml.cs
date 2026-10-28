@@ -43,6 +43,10 @@ public partial class SettingsWindow : Window
         TgRemindDaysBox.Text = s.TgRemindDays.ToString();
         TgRemindTrafficBox.Text = s.TgRemindTraffic.ToString();
         ToastsBox.IsChecked = s.ToastsEnabled;
+        TgPayBox.IsChecked = s.TgPayEnabled;
+        TgPlansBox.Text = s.TgPayPlans.Replace("\n", "\r\n");
+        TgPayDetailsBox.Text = s.TgPayDetails.Replace("\n", "\r\n");
+        TgWriteTokenBox.Password = s.TgWriteToken;
         for (int h = 0; h < 24; h++)
         {
             var b = new ToggleButton { Content = h.ToString("00"), Style = (Style)FindResource("HourToggle"), IsChecked = s.TgQuietHours.Contains(h) };
@@ -103,6 +107,10 @@ public partial class SettingsWindow : Window
         _s.TgRemindDays = RemindDays();
         _s.TgRemindTraffic = RemindTraffic();
         _s.ToastsEnabled = ToastsBox.IsChecked == true;
+        _s.TgPayEnabled = TgPayBox.IsChecked == true;
+        _s.TgPayPlans = TgPlansBox.Text.Replace("\r\n", "\n").Trim();
+        _s.TgPayDetails = TgPayDetailsBox.Text.Replace("\r\n", "\n").Trim();
+        _s.TgWriteToken = TgWriteTokenBox.Password.Trim();
         _s.TgQuietHours = SelectedHours();
         _s.TgQuietEnabled = TgQuietBox.IsChecked == true && _s.TgQuietHours.Count > 0;
         _s.Theme = LightRb.IsChecked == true ? "light" : "dark";
@@ -169,6 +177,9 @@ public partial class SettingsWindow : Window
         if (!Settings.TryParseTime(TgDndTimeBox.Text, out var dnd)) { TgResultText("Время «не беспокоить» — в формате ЧЧ:ММ, например 08:00.", "Red"); return; }
         var observers = BotSetup.ParseObservers(TgObserversBox.Text.Replace("\r\n", "\n"), out var obsErr);
         if (obsErr != "") { TgResultText("Дополнительные админы: " + obsErr, "Red"); return; }
+        var plans = BotSetup.ParsePlans(TgPlansBox.Text.Replace("\r\n", "\n"), out var planErr);
+        if (TgPayBox.IsChecked == true && planErr != "") { TgResultText("Тарифы: " + planErr, "Red"); return; }
+        if (TgPayBox.IsChecked == true && TgPayDetailsBox.Text.Trim() == "") { TgResultText("Укажите реквизиты для перевода.", "Red"); return; }
         if (_s.TgWebhookSecret == "") { _s.TgWebhookSecret = BotSetup.NewSecret(); _s.Save(); }   // секрет вебхуков сразу сохраняется
         var cfg = new BotSetup.Config(api, token, chat,
             int.TryParse(OnlineBox.Text, out var w) && w >= 30 ? w : 300,
@@ -176,7 +187,8 @@ public partial class SettingsWindow : Window
             TgQuietBox.IsChecked == true ? SelectedHours() : new List<int>(), dnd.ToString(@"hh\:mm"),
             TgUsersEvBox.IsChecked == true, TgPanelEvBox.IsChecked == true, observers,
             TgCabinetBox.IsChecked == true, TgRemindBox.IsChecked == true, RemindDays(), RemindTraffic(),
-            TgWebhookBox.IsChecked == true, _s.TgWebhookSecret);
+            TgWebhookBox.IsChecked == true, _s.TgWebhookSecret,
+            TgPayBox.IsChecked == true, plans, TgPayDetailsBox.Text.Replace("\r\n", "\n").Trim(), TgWriteTokenBox.Password.Trim());
         try
         {
             Clipboard.SetText(BotSetup.Command(cfg));
