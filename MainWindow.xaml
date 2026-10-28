@@ -104,14 +104,16 @@
                         <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="22,12,30,12">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="22"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/><ColumnDefinition Width="90"/>
                                     <ColumnDefinition Width="170"/><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="HdrName" Grid.Column="1" Tag="name" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
                                 <TextBlock x:Name="HdrStatus" Grid.Column="2" Tag="status" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
-                                <TextBlock x:Name="HdrTraffic" Grid.Column="3" Tag="traffic" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
-                                <TextBlock x:Name="HdrNode" Grid.Column="4" Tag="node" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
-                                <TextBlock x:Name="HdrOnline" Grid.Column="5" Tag="online" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
+                                <TextBlock x:Name="HdrDevices" Grid.Column="3" Tag="devices" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"
+                                           ToolTip="зарегистрированные устройства (HWID): сколько / лимит"/>
+                                <TextBlock x:Name="HdrTraffic" Grid.Column="4" Tag="traffic" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
+                                <TextBlock x:Name="HdrNode" Grid.Column="5" Tag="node" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
+                                <TextBlock x:Name="HdrOnline" Grid.Column="6" Tag="online" Style="{StaticResource HdrSort}" MouseLeftButtonUp="Sort_Click"/>
                             </Grid>
                         </Border>
                         <ListBox x:Name="UsersGrid" PreviewMouseRightButtonUp="List_RightClick" MouseDoubleClick="Users_DoubleClick" Grid.Row="1" Style="{StaticResource Rows}">
@@ -120,7 +122,7 @@
                                     <Border Style="{StaticResource Row}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="22"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/>
+                                                <ColumnDefinition Width="22"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/><ColumnDefinition Width="90"/>
                                                 <ColumnDefinition Width="170"/><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/>
                                             </Grid.ColumnDefinitions>
                                             <Ellipse Width="8" Height="8" HorizontalAlignment="Left">
@@ -181,12 +183,25 @@
                                                 </TextBlock.Style>
                                             </TextBlock>
 
-                                            <StackPanel Grid.Column="3" VerticalAlignment="Center">
+                                            <TextBlock Grid.Column="3" Text="{Binding DevicesText}" ToolTip="{Binding DevicesTip}" FontSize="12" VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding DevicesLevel}" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></DataTrigger>
+                                                            <DataTrigger Binding="{Binding DevicesLevel}" Value="zero"><Setter Property="Foreground" Value="{DynamicResource Dim}"/></DataTrigger>
+                                                            <DataTrigger Binding="{Binding DevicesLevel}" Value="none"><Setter Property="Foreground" Value="{DynamicResource Dim}"/></DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+
+                                            <StackPanel Grid.Column="4" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding Traffic}"/>
                                                 <ProgressBar Style="{StaticResource Bar}" Value="{Binding TrafficPct, Mode=OneWay}" Margin="0,5,18,0"/>
                                             </StackPanel>
 
-                                            <StackPanel Grid.Column="4" VerticalAlignment="Center">
+                                            <StackPanel Grid.Column="5" VerticalAlignment="Center">
                                                 <StackPanel Orientation="Horizontal">
                                                     <Image Style="{StaticResource FlagImg}" Source="{Binding LastNodeCountry, Converter={StaticResource Flag}}"/>
                                                     <TextBlock Text="{Binding LastNode}" Foreground="{DynamicResource Dim}"/>
@@ -202,7 +217,7 @@
                                                 </TextBlock>
                                             </StackPanel>
 
-                                            <TextBlock Grid.Column="5" Text="{Binding Online}" VerticalAlignment="Center">
+                                            <TextBlock Grid.Column="6" Text="{Binding Online}" VerticalAlignment="Center">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Foreground" Value="{DynamicResource Dim}"/>

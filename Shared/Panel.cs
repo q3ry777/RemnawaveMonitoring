@@ -26,7 +26,15 @@ public record UserRow(
     double TrafficBytes, DateTimeOffset? LastSeen, bool HasLimit, double TrafficPct, string TrafficLevel,
     string ExpireNote, string ExpireLevel, string SubscriptionUrl,
     string UserId = "", string UserUuid = "", string Ip = "", string IpTip = "",
-    string Raw = "");   // исходный JSON пользователя из панели — для карточки пользователя
+    string Raw = "",    // исходный JSON пользователя из панели — для карточки пользователя
+    int Devices = -1, int DeviceLimit = 0)   // зарегистрированные устройства (HWID): -1 — нет данных; лимит 0 — без лимита
+{
+    // «2/3» или «2»; пусто, пока данных нет
+    public string DevicesText => Devices < 0 ? "—" : DeviceLimit > 0 ? $"{Devices}/{DeviceLimit}" : Devices.ToString();
+    public string DevicesLevel => Devices < 0 ? "none" : DeviceLimit > 0 && Devices >= DeviceLimit ? "warn" : Devices == 0 ? "zero" : "ok";
+    public string DevicesTip => Devices < 0 ? "нет данных об устройствах (HWID)"
+        : $"зарегистрировано устройств: {Devices}" + (DeviceLimit > 0 ? $" из {DeviceLimit}" + (Devices >= DeviceLimit ? " — лимит исчерпан" : "") : " (лимита нет)");
+}
 
 // Устройство пользователя (HWID) и трафик по дням / по нодам — для карточки пользователя
 public record UserDevice(string Platform, string Os, string Model, string Agent, string Ip, DateTimeOffset? Created, DateTimeOffset? Updated);
@@ -191,6 +199,31 @@ public class Api
             list.Add(new UserDevice(J.S(x, "platform"), J.S(x, "osVersion"), J.S(x, "deviceModel"), J.S(x, "userAgent"),
                 J.S(x, "requestIp"), Date(J.S(x, "createdAt")), Date(J.S(x, "updatedAt"))));
         return list.OrderByDescending(x => x.Updated ?? x.Created).ToList();
+    }
+
+    // Число устройств (HWID) у каждого пользователя: весь список устройств панели постранично.
+    // Ключ — id пользователя (панель 3.x) или uuid (2.x). null — у панели нет такого API или у токена нет прав.
+    public async Task<Dictionary<string, int>?> GetDeviceCountsAsync(IPanelConfig s)
+    {
+        var map = new Dictionary<string, int>();
+        const int size = 500;
+        for (int start = 0, guard = 0; guard < 100; start += size, guard++)
+        {
+            var json = await GetOptionalAsync(s, $"/api/hwid/devices?start={start}&size={size}");
+            if (json == "") return start == 0 ? null : map;
+            using var d = JsonDocument.Parse(json);
+            int n = 0;
+            foreach (var x in J.Items(d.RootElement, "devices"))
+            {
+                var key = J.S(x, "userId");
+                if (key == "") key = J.S(x, "userUuid");
+                if (key != "") map[key] = map.GetValueOrDefault(key) + 1;
+                n++;
+            }
+            int total = (int)J.N(d.RootElement, "response", "total");
+            if (n < size || start + n >= total) break;
+        }
+        return map;
     }
 
     static DateTimeOffset? Date(string s) =>
@@ -526,7 +559,7 @@ public static class SnapshotBuilder
                 hasLimit ? $"{J.Bytes(traffic)} / {J.Bytes(limit)}" : J.Bytes(traffic),
                 names.GetValueOrDefault(uuid, "—"), last, online, countries.GetValueOrDefault(uuid, ""),
                 traffic, seen, hasLimit, Math.Min(1, pct), level, note, noteLevel, J.S(u, "subscriptionUrl"),
-                UserId: J.S(u, "id"), UserUuid: J.S(u, "uuid"), Raw: u.GetRawText()));
+                UserId: J.S(u, "id"), UserUuid: J.S(u, "uuid"), Raw: u.GetRawText(), DeviceLimit: (int)J.N(u, "hwidDeviceLimit")));
         }
         users = users.OrderByDescending(x => x.IsOnline).ThenBy(x => x.Username).ToList();
         return new Snapshot(users, nodes, DateTime.Now);

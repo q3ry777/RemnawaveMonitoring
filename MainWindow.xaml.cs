@@ -105,6 +105,7 @@ public partial class MainWindow : Window
         "name" => u.Username.ToLowerInvariant(),
         "status" => u.Status,
         "traffic" => u.TrafficBytes,
+        "devices" => u.Devices,
         "node" => u.LastNode,
         _ => u.LastSeen ?? DateTimeOffset.MinValue,
     };
@@ -154,7 +155,7 @@ public partial class MainWindow : Window
     {
         var map = new (TextBlock tb, string key, string label)[]
         {
-            (HdrName, "name", "ПОЛЬЗОВАТЕЛЬ"), (HdrStatus, "status", "СТАТУС"), (HdrTraffic, "traffic", "ТРАФИК"),
+            (HdrName, "name", "ПОЛЬЗОВАТЕЛЬ"), (HdrStatus, "status", "СТАТУС"), (HdrDevices, "devices", "УСТР."), (HdrTraffic, "traffic", "ТРАФИК"),
             (HdrNode, "node", "ПОСЛЕДНЯЯ НОДА · IP"), (HdrOnline, "online", "ОНЛАЙН"),
         };
         foreach (var (tb, key, label) in map)
@@ -165,7 +166,7 @@ public partial class MainWindow : Window
     {
         var key = (string)((FrameworkElement)sender).Tag;
         if (_sortKey == key) _sortDesc = !_sortDesc;
-        else { _sortKey = key; _sortDesc = key is "traffic" or "online"; }
+        else { _sortKey = key; _sortDesc = key is "traffic" or "online" or "devices"; }
         UpdateHeaders();
         Apply();
     }

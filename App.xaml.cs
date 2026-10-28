@@ -122,6 +122,9 @@ public partial class App : Application
         _timer.Interval = TimeSpan.FromSeconds(_s.IntervalSec);
         _timer.Start();
 
+        _devTimer.Tick += async (_, _) => await RefreshDevices();
+        _devTimer.Start();
+
         _ipTimer.Tick += async (_, _) => await RefreshIps();
         _ipTimer.Interval = TimeSpan.FromMinutes(1);
         _ipTimer.Start();
@@ -189,6 +192,7 @@ public partial class App : Application
             UpdateCards();
             RefreshChip();
             if (_ipFirst) { _ipFirst = false; _ = RefreshIps(); }
+            if (_devFirst) { _devFirst = false; _ = RefreshDevices(); }
             _win.SetOffline(null);
         }
         catch (Exception ex)
@@ -264,8 +268,26 @@ public partial class App : Application
                 MutedText = MutedLabel(n.Name),
             };
         }).ToList();
-        var users = Online.Apply(s.Users, _ips, _s.OnlineWindowSec);
+        var users = Online.ApplyDevices(Online.Apply(s.Users, _ips, _s.OnlineWindowSec), _devices);
         return s with { Nodes = nodes, Users = users };
+    }
+
+    // ---- число зарегистрированных устройств (HWID) у пользователей: раз в 5 минут ----
+    readonly DispatcherTimer _devTimer = new() { Interval = TimeSpan.FromMinutes(5) };
+    Dictionary<string, int>? _devices;
+    bool _devBusy, _devFirst = true;
+
+    async Task RefreshDevices()
+    {
+        if (_devBusy) return;
+        _devBusy = true;
+        try
+        {
+            _devices = await _api.GetDeviceCountsAsync(_s);
+            ReapplyExtras();
+        }
+        catch { }
+        finally { _devBusy = false; }
     }
 
     // ---- IP активных подключений пользователей (раз в минуту, только ноды с людьми онлайн); по ним же уточняется «онлайн» ----

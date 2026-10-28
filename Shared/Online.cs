@@ -62,4 +62,16 @@ public static class Online
             return row;
         }).ToList();
     }
+
+    // Число зарегистрированных устройств в строки пользователей (у кого устройств нет — 0)
+    public static List<UserRow> ApplyDevices(List<UserRow> users, Dictionary<string, int>? counts)
+    {
+        if (counts == null) return users;
+        return users.Select(u =>
+        {
+            int n = counts.GetValueOrDefault(u.UserId, 0);
+            if (n == 0 && u.UserUuid != "") n = counts.GetValueOrDefault(u.UserUuid, 0);
+            return u with { Devices = n };
+        }).ToList();
+    }
 }
