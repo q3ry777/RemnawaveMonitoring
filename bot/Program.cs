@@ -587,6 +587,9 @@ public class Bot
                   ?? (t == Norm(BtnRemindOff) || t == Norm(BtnRemindOn) ? "/remind" : t == Norm(BtnSupport) ? "/support" : "");
         }
 
+        // админ, у которого есть свои подписки (его Telegram ID указан в панели), тоже считается подключившим бота
+        if (IsAdmin(chat)) MarkStarted(chat, SubsOf(chat));
+
         if (IsAdmin(chat))
         {
             string? reply = cmd switch
@@ -741,6 +744,7 @@ public class Bot
 
     void MarkStarted(string chat, List<UserRow> subs)
     {
+        if (subs.Count == 0) return;
         lock (_lock)
         {
             if (_state.Started.Contains(chat)) return;
@@ -748,6 +752,7 @@ public class Bot
             _state.StartedAt[chat] = DateTime.Now;
             _state.Save(_cfg.DataDir);
         }
+        if (IsAdmin(chat)) return;   // админ с собственными подписками — без сообщения самому себе
         Alert("users", $"👤 {string.Join(", ", subs.Select(x => x.Username))} подключил(а) бота — теперь получает напоминания");
     }
 
