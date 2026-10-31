@@ -27,6 +27,10 @@ public partial class MainWindow : Window
         SourceInitialized += (_, _) => WinChrome.Apply(this);
         _s = s; _openSettings = openSettings; _refresh = refresh;
         RestorePlacement();
+        Demo.On = s.DemoMode;
+        Loaded += (_, _) => ShowDemo();
+        // Ctrl+D — режим демонстрации
+        InputBindings.Add(new KeyBinding(new RelayCommand(ToggleDemo), Key.D, ModifierKeys.Control));
         _debounce.Tick += (_, _) => { _debounce.Stop(); Apply(); };
         UpdateHeaders();
         VersionBadge.Text = "V" + Updater.CurrentText;
@@ -59,8 +63,12 @@ public partial class MainWindow : Window
     static string Months(int m) => m % 10 == 1 && m % 100 != 11 ? $"{m} месяц"
         : m % 10 is >= 2 and <= 4 && (m % 100 < 10 || m % 100 >= 20) ? $"{m} месяца" : $"{m} месяцев";
 
+    PaymentsReport? _lastPayments;
+    string _lastPayError = "";
+
     public void UpdatePayments(PaymentsReport? r, string error)
     {
+        _lastPayments = r; _lastPayError = error;
         if (r == null)
         {
             PaySummary.Text = "Оплаты недоступны";
@@ -87,7 +95,7 @@ public partial class MainWindow : Window
         }
         PayNote.Text = error != "" ? error : $"обновлено {r.Generated:HH:mm:ss} · заявки подтверждаются в боте";
         PaymentsGrid.ItemsSource = r.Payments.OrderByDescending(p => p.Created).Select(p => new PaymentRow(
-            p.Created.ToString("dd.MM.yy HH:mm"), p.Username, Months(p.Months), Money(p.Amount), p.Status,
+            p.Created.ToString("dd.MM.yy HH:mm"), Demo.Name(p.Username), Months(p.Months), Money(p.Amount), p.Status,
             p.Status switch { "ok" => "подтверждена", "no" => "отклонена", _ => "ждёт проверки" },
             p.NewExpire)).ToList();
     }
@@ -160,7 +168,8 @@ public partial class MainWindow : Window
     {
         if (_snap == null) return;
 
-        IEnumerable<UserRow> q = _snap.Users;
+        Demo.SetUsers(_snap.Users);
+        IEnumerable<UserRow> q = _snap.Users.Select(Demo.Mask);
         var text = Search.Text.Trim();
         if (text != "") q = q.Where(u => u.Username.Contains(text, StringComparison.OrdinalIgnoreCase));
         if (FilterOnline.IsChecked == true) q = q.Where(u => u.IsOnline);
@@ -330,6 +339,31 @@ public partial class MainWindow : Window
     void Refresh_Click(object sender, RoutedEventArgs e) => _refresh();
     void Settings_Click(object sender, RoutedEventArgs e) => _openSettings();
 
+    // ---- режим демонстрации ----
+    public Action? DemoChanged;
+
+    void Demo_Click(object sender, RoutedEventArgs e) => ToggleDemo();
+
+    void ToggleDemo()
+    {
+        Demo.On = !Demo.On;
+        _s.DemoMode = Demo.On;
+        _s.Save();
+        ShowDemo();
+        Apply(keepScroll: true);
+        if (_lastPayments != null) UpdatePayments(_lastPayments, _lastPayError);
+        DemoChanged?.Invoke();
+        SetStatus(Demo.On ? "режим демонстрации: имена и IP скрыты" : "режим демонстрации выключен");
+    }
+
+    void ShowDemo()
+    {
+        DemoBtn.Content = Demo.On ? "👁 демо: вкл" : "👁 демо";
+        if (Demo.On) DemoBtn.SetResourceReference(ForegroundProperty, "Amber");
+        else DemoBtn.ClearValue(ForegroundProperty);
+        Search.Text = Demo.On ? "" : Search.Text;   // поиск по настоящему имени в демо выдавал бы людей
+    }
+
     void Theme_Click(object sender, RoutedEventArgs e)
     {
         _s.Theme = _s.Theme == "light" ? "dark" : "light";
@@ -387,4 +421,14 @@ public partial class MainWindow : Window
         e.Cancel = true;
         Hide();
     }
+}
+
+// Простая команда для горячих клавиш
+public class RelayCommand : ICommand
+{
+    readonly Action _run;
+    public RelayCommand(Action run) => _run = run;
+    public event EventHandler? CanExecuteChanged { add { } remove { } }
+    public bool CanExecute(object? parameter) => true;
+    public void Execute(object? parameter) => _run();
 }

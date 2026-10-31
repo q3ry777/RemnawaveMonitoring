@@ -98,6 +98,7 @@ public partial class App : Application
         _win.OpenJournalRequested = OpenJournal;
         _win.MutesChanged = ReapplyExtras;
         _win.OpenUserRequested = OpenUser;
+        _win.DemoChanged = () => { UpdateCards(); _journal?.Refresh(); };
         _win.PaymentsOpened = () => _ = RefreshPayments();
         _payTimer.Tick += async (_, _) => await RefreshPayments();
         _payTimer.Start();
@@ -586,6 +587,7 @@ public partial class App : Application
     void Balloon(string text, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Warning, bool incident = false, string? userKey = null)
     {
         // уведомление нового вида (центр уведомлений Windows); если не вышло — старое всплывающее
+        text = Demo.Text(text);   // режим демонстрации: имена пользователей и IP скрыты и в уведомлениях
         if (_s.ToastsEnabled && Toast.Show(text, incident, userKey)) return;
         _balloonIncident = incident;
         _balloonShownAt = DateTime.Now;

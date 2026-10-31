@@ -19,6 +19,8 @@
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="JournalBtn" Content="журнал" Style="{StaticResource Btn}" Click="Journal_Click"/>
+                        <Button x:Name="DemoBtn" Content="👁 демо" Style="{StaticResource Btn}" Click="Demo_Click"
+                                ToolTip="режим демонстрации: имена пользователей и IP скрыты (Ctrl+D)"/>
                         <Button Content="◐ тема" Style="{StaticResource Btn}" Click="Theme_Click"/>
                         <Button Content="настройки" Style="{StaticResource Btn}" Click="Settings_Click"/>
                         <Button x:Name="RefreshBtn" Content="обновить" Style="{StaticResource BtnPrimary}" Click="Refresh_Click"/>

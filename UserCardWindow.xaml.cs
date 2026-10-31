@@ -36,8 +36,8 @@ public partial class UserCardWindow : Window
     void ShowUser()
     {
         var u = _u;
-        Title = u.Username + " — пользователь";
-        NameText.Text = u.Username;
+        Title = Demo.Name(u.Username) + " — пользователь";
+        NameText.Text = Demo.Name(u.Username);
         StatusText.Text = u.Status;
         bool active = u.Status == "ACTIVE";
         StatusText.SetResourceReference(TextBlock.ForegroundProperty, active ? "Green" : "Red");
@@ -91,7 +91,7 @@ public partial class UserCardWindow : Window
         if (TryDate(S("subLastOpenedAt"), out var opened))
             rows.Add(("подписку открывали", $"{opened.ToLocalTime():dd.MM.yyyy HH:mm}" + (S("subLastUserAgent") is { Length: > 0 } ua ? $" · {ua}" : ""), ""));
         foreach (var (label, key) in new[] { ("описание", "description"), ("тег", "tag"), ("telegram id", "telegramId"), ("email", "email") })
-            if (S(key) is { Length: > 0 } v) rows.Add((label, v, ""));
+            if (S(key) is { Length: > 0 } v) rows.Add((label, Demo.On ? "скрыто (режим демонстрации)" : v, ""));
 
         InfoGrid.Children.Clear();
         InfoGrid.RowDefinitions.Clear();
@@ -112,8 +112,8 @@ public partial class UserCardWindow : Window
         else
             foreach (var line in u.IpTip.Split('\n'))
             {
-                var t = new TextBlock { Text = line, Margin = new Thickness(0, 2, 0, 2), Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "щелчок — скопировать IP" };
-                var ip = line.Split(' ')[0];
+                var t = new TextBlock { Text = Demo.Ip(line), Margin = new Thickness(0, 2, 0, 2), Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "щелчок — скопировать IP" };
+                var ip = Demo.Ip(line.Split(' ')[0]);
                 t.MouseLeftButtonUp += (_, _) => Copy(ip, "IP");
                 IpList.Children.Add(t);
             }
@@ -159,8 +159,12 @@ public partial class UserCardWindow : Window
         finally { _loading = false; }
     }
 
+    List<UserDevice>? _devices;
+    bool _devicesLoaded;
+
     void ShowDevices(List<UserDevice>? list)
     {
+        _devices = list; _devicesLoaded = true;
         DevList.Children.Clear();
         var limit = "";
         try { if (_u.Raw != "") limit = J.S(JsonDocument.Parse(_u.Raw).RootElement, "hwidDeviceLimit"); } catch { }
@@ -180,7 +184,7 @@ public partial class UserCardWindow : Window
             var meta = new List<string>();
             if (d.Updated is DateTimeOffset up) meta.Add($"последний раз {up.ToLocalTime():dd.MM.yyyy HH:mm}");
             if (d.Created is DateTimeOffset cr) meta.Add($"добавлено {cr.ToLocalTime():dd.MM.yyyy}");
-            if (d.Ip != "") meta.Add(d.Ip);
+            if (d.Ip != "") meta.Add(Demo.Ip(d.Ip));
             if (meta.Count > 0) sp.Children.Add(Dim(string.Join(" · ", meta)));
             if (d.Agent != "") sp.Children.Add(Dim(d.Agent));
             DevList.Children.Add(sp);
@@ -267,6 +271,7 @@ public partial class UserCardWindow : Window
     {
         _u = u;
         ShowUser();
+        if (_devicesLoaded) ShowDevices(_devices);   // режим демонстрации мог переключиться
     }
 
     void CopySub_Click(object sender, RoutedEventArgs e) => Copy(_u.SubscriptionUrl, "ссылка подписки");

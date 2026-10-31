@@ -81,6 +81,7 @@ public class Settings : IPanelConfig
 
     // Программа: уведомления Windows нового вида и «что нового» после обновления
     public bool ToastsEnabled { get; set; } = true;
+    public bool DemoMode { get; set; }                    // режим демонстрации: скрыты имена пользователей и IP
     public string? LastChangelog { get; set; }
 
     // «23:00–08:00, 13:00–14:00» по набору часов
