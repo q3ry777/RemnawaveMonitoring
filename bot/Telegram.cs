@@ -28,7 +28,7 @@ public class Telegram
     // (чат, id нажатия, данные кнопки) — нажатие inline-кнопки
     // + имя отправителя «Имя Фамилия (@ник)» и текст сообщения, на которое ответили (reply), если есть
     public Func<string, string, long, bool, string, string, Task>? OnMessage;
-    public Func<string, string, string, Task>? OnCallback;
+    public Func<string, string, string, long, Task>? OnCallback;   // + id сообщения с кнопкой (чтобы его обновить)
 
     public static readonly (string cmd, string desc)[] AdminCommands =
     {
@@ -93,6 +93,21 @@ public class Telegram
         if (caption.Length > 1000) caption = caption[..1000] + "…";
         _queue.Enqueue(new Outgoing(toChat, caption, markup, null, DateTime.Now, fromChat, messageId));
         _signal.Release();
+    }
+
+    // Изменить текст и кнопки уже отправленного сообщения (сразу, без очереди)
+    public async Task EditAsync(string chat, long messageId, string text, string? markup)
+    {
+        try
+        {
+            var fields = new Dictionary<string, string> { ["chat_id"] = chat, ["message_id"] = messageId.ToString(), ["text"] = text };
+            if (markup != null) fields["reply_markup"] = markup;
+            using var content = new FormUrlEncodedContent(fields);
+            using var res = await _http.PostAsync(Url("editMessageText"), content);
+            if (!res.IsSuccessStatusCode && !(await res.Content.ReadAsStringAsync()).Contains("not modified"))
+                Send(chat, text, markup);   // не вышло изменить — новым сообщением
+        }
+        catch { Send(chat, text, markup); }
     }
 
     public async Task AnswerCallbackAsync(string id, string text = "")
@@ -239,7 +254,8 @@ public class Telegram
                 {
                     var chat = J.S(cb, "message", "chat", "id");
                     if (chat == "") chat = J.S(cb, "from", "id");
-                    if (OnCallback != null) await OnCallback(chat, J.S(cb, "id"), J.S(cb, "data"));
+                    long.TryParse(J.S(cb, "message", "message_id"), out var cbMsg);
+                    if (OnCallback != null) await OnCallback(chat, J.S(cb, "id"), J.S(cb, "data"), cbMsg);
                     continue;
                 }
                 if (!u.TryGetProperty("message", out var m) || !m.TryGetProperty("chat", out var chatEl)) continue;

@@ -448,9 +448,11 @@ public class Bot
             var msg = lines.Count == 1 ? lines[0] : "Напоминание по подпискам:\n\n" + string.Join("\n\n", lines);
             msg += toPay.Count > 0 ? "\n\nПродлить можно прямо здесь — кнопкой ниже." : "\n\nПодробности — «👤 Мои подписки». Продлить — напишите администратору.";
             Log.Write($"напоминание для {chat}: {lines.Count}");
-            _tg.Send(chat, msg, toPay.Count > 0
-                ? Telegram.Inline(toPay.Select(u => ($"💳 Продлить «{u.Username}»", "pay:" + Key(u))), 1)
-                : ChatKeyboard(chat));
+            _tg.Send(chat, msg, toPay.Count == 1
+                ? Telegram.Inline(new[] { ($"💳 Продлить «{toPay[0].Username}»", "pay:" + Key(toPay[0])) })
+                : toPay.Count > 1
+                    ? Telegram.Inline(new[] { ($"💳 Продлить ({toPay.Count})", "paysel:") })
+                    : ChatKeyboard(chat));
         }
         if (_state.Reminded.Count > 3000) { _state.Reminded.RemoveRange(0, _state.Reminded.Count - 3000); changed = true; }
         if (changed) _state.Save(_cfg.DataDir);
@@ -768,7 +770,10 @@ public class Bot
         foreach (var u in subs) sb.AppendLine(SubLine(u, now));
         sb.Append("\nНажмите на подписку, чтобы открыть подробности и ссылку.");
         var buttons = subs.Select(u => (u.Username, "sub:" + Key(u))).ToList();
-        var pay = subs.Where(Payable).Select(u => ($"💳 Продлить «{u.Username}»", "pay:" + Key(u))).ToList();
+        var payable = subs.Where(Payable).ToList();
+        var pay = payable.Count > 1
+            ? new List<(string, string)> { ($"💳 Продлить несколько ({payable.Count})", "paysel:") }
+            : payable.Select(u => ($"💳 Продлить «{u.Username}»", "pay:" + Key(u))).ToList();
         if (pay.Count == 0) _tg.Send(chat, sb.ToString(), Telegram.Inline(buttons));
         else
         {
@@ -801,7 +806,7 @@ public class Bot
         return $"{icon} {u.Username} — {string.Join(" · ", parts)}";
     }
 
-    async Task OnCallbackAsync(string chat, string id, string data)
+    async Task OnCallbackAsync(string chat, string id, string data, long messageId)
     {
         var colon = data.IndexOf(':');
         var kind = colon > 0 ? data[..colon] : data;
@@ -810,9 +815,9 @@ public class Bot
             await _tg.AnswerCallbackAsync(id, Broadcast(chat, colon > 0 ? data[(colon + 1)..] : "", kind == "bc") ?? "");
             return;
         }
-        if (kind is "pay" or "plan" or "paid" or "cancel" or "ok" or "no")
+        if (kind is "pay" or "plan" or "paid" or "cancel" or "ok" or "no" or "sel" or "selx" or "selgo" or "paysel")
         {
-            var reply = await PayCallbackAsync(chat, kind, colon > 0 ? data[(colon + 1)..] : "");
+            var reply = await PayCallbackAsync(chat, kind, colon > 0 ? data[(colon + 1)..] : "", messageId);
             await _tg.AnswerCallbackAsync(id, reply ?? "");
             return;
         }
@@ -870,33 +875,83 @@ public class Bot
     static string MonthsText(int m) => m % 10 == 1 && m % 100 != 11 ? $"{m} месяц"
         : m % 10 is >= 2 and <= 4 && (m % 100 < 10 || m % 100 >= 20) ? $"{m} месяца" : $"{m} месяцев";
 
-    // Кнопка «Продлить подписку» внизу: одна оплачиваемая подписка — сразу тарифы, несколько — выбор
-    void StartPay(string chat)
+    // ---- выбор подписок (массовая оплата) ----
+    readonly Dictionary<string, HashSet<string>> _paySel = new();     // чат → отмеченные подписки
+    readonly Dictionary<string, List<string>> _paySets = new();       // набор для выбора срока: id → подписки
+
+    // Истекает скоро (или уже истекла) — такие отмечаются сразу
+    bool Expiring(UserRow u) => ExpireOf(u) is DateTimeOffset e && e - Api.Now <= TimeSpan.FromDays(Math.Max(7, _cfg.RemindDays));
+
+    // Кнопка «Продлить подписку»: одна оплачиваемая подписка — сразу сроки, несколько — выбор галочками
+    void StartPay(string chat, long editMessage = 0)
     {
         var pay = SubsOf(chat).Where(Payable).ToList();
         if (!_cfg.PayEnabled || pay.Count == 0) { _tg.Send(chat, "Продлевать здесь нечего: у ваших подписок нет срока окончания или оплата выключена.", ChatKeyboard(chat)); return; }
-        if (pay.Count == 1) { ShowPlans(chat, pay[0]); return; }
-        _tg.Send(chat, "Какую подписку продлить?", Telegram.Inline(pay.Select(u => (u.Username, "pay:" + Key(u))), 1));
+        if (pay.Count == 1) { ShowPlans(chat, pay); return; }
+        lock (_lock)
+        {
+            var sel = pay.Where(Expiring).Select(Key).ToHashSet();
+            _paySel[chat] = sel;
+        }
+        _ = ShowSelection(chat, editMessage);
     }
 
-    void ShowPlans(string chat, UserRow u)
+    async Task ShowSelection(string chat, long editMessage)
     {
-        var exp = ExpireOf(u);
+        var pay = SubsOf(chat).Where(Payable).ToList();
+        HashSet<string> sel;
+        lock (_lock) sel = _paySel.TryGetValue(chat, out var s0) ? s0 : (_paySel[chat] = new());
+        sel.RemoveWhere(k => pay.All(u => Key(u) != k));
         var now = Api.Now;
-        var head = exp is DateTimeOffset e
-            ? (e > now ? $"Подписка «{u.Username}» действует до {e.ToLocalTime():dd.MM.yyyy}. Продление добавится к этой дате." : $"Подписка «{u.Username}» истекла. Продление начнётся с момента подтверждения оплаты.")
-            : $"Подписка «{u.Username}».";
-        _tg.Send(chat, head + "\n\nВыберите срок:",
-            Telegram.Inline(_cfg.PayPlans.Select(p => ($"{MonthsText(p.months)} — {Money(p.price)}", $"plan:{Key(u)}:{p.months}")), 1));
+        var rows = pay.Select(u =>
+        {
+            var e = ExpireOf(u);
+            var when = e is DateTimeOffset x ? (x <= now ? $"истекла {x.ToLocalTime():dd.MM}" : $"до {x.ToLocalTime():dd.MM} (ещё {Math.Max(1, (int)Math.Ceiling((x - now).TotalDays))} д)") : "";
+            return new[] { ((sel.Contains(Key(u)) ? "☑ " : "☐ ") + u.Username + (when != "" ? " — " + when : ""), "sel:" + Key(u)) };
+        }).ToList();
+        rows.Add(new[] { ("Выбрать истекающие", "selx:"), ($"Далее → ({sel.Count})", "selgo:") });
+        var text = "Выберите подписки для продления — нажатие ставит или снимает галочку. Затем «Далее».";
+        var markup = Telegram.InlineRows(rows);
+        if (editMessage > 0) await _tg.EditAsync(chat, editMessage, text, markup);
+        else _tg.Send(chat, text, markup);
+    }
+
+    void ShowPlans(string chat, List<UserRow> users)
+    {
+        var now = Api.Now;
+        var setId = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
+        lock (_lock) _paySets[setId] = users.Select(Key).ToList();
+        string Line(UserRow u) => ExpireOf(u) is DateTimeOffset e
+            ? (e > now ? $"«{u.Username}» — до {e.ToLocalTime():dd.MM.yyyy}" : $"«{u.Username}» — истекла")
+            : $"«{u.Username}»";
+        var head = users.Count == 1
+            ? (ExpireOf(users[0]) is DateTimeOffset e1 && e1 > now
+                ? $"Подписка «{users[0].Username}» действует до {e1.ToLocalTime():dd.MM.yyyy}. Продление добавится к этой дате."
+                : $"Подписка «{users[0].Username}» истекла. Продление начнётся с момента подтверждения оплаты.")
+            : $"Продление {users.Count} подписок:\n" + string.Join("\n", users.Select(u => "• " + Line(u))) +
+              "\n\nДействующим срок добавится к дате окончания, истёкшим — с момента подтверждения.";
+        int n = users.Count;
+        _tg.Send(chat, head + "\n\nВыберите срок" + (n > 1 ? " (одинаковый для всех)" : "") + ":",
+            Telegram.Inline(_cfg.PayPlans.Select(p => ($"{MonthsText(p.months)} — {Money(p.price * n)}" + (n > 1 ? $" ({n} × {Money(p.price)})" : ""), $"plan:{setId}:{p.months}")), 1));
     }
 
     string PayButtons(string pid) => Telegram.Inline(new[] { ("✅ Подтвердить", "ok:" + pid), ("❌ Отклонить", "no:" + pid) });
 
-    string PayInfo(Payment p, UserRow? u)
+    string PayInfo(Payment p)
     {
-        var exp = u != null ? ExpireOf(u) : null;
-        return $"«{p.Username}» на {MonthsText(p.Months)} — {Money(p.Amount)}"
-               + (exp is DateTimeOffset e ? $" (сейчас {(e > Api.Now ? "до " + e.ToLocalTime().ToString("dd.MM.yyyy") : "истекла")})" : "")
+        var now = Api.Now;
+        var keys = p.Keys();
+        var names = p.AllNames();
+        var lines = keys.Select((k, i) =>
+        {
+            var u = UserByKey(k);
+            var e = u != null ? ExpireOf(u) : null;
+            var done = p.DoneItems.TryGetValue(k, out var d) ? $" ✅ продлено до {d}" : "";
+            return $"• «{(i < names.Count ? names[i] : k)}»" + (e is DateTimeOffset x ? $" (сейчас {(x > now ? "до " + x.ToLocalTime().ToString("dd.MM.yyyy") : "истекла")})" : "") + done;
+        });
+        return (keys.Count > 1 ? $"{keys.Count} подписки на {MonthsText(p.Months)} — {Money(p.Amount)} ({keys.Count} × {Money(p.Price > 0 ? p.Price : p.Amount / keys.Count)})"
+                               : $"«{names[0]}» на {MonthsText(p.Months)} — {Money(p.Amount)}")
+               + (keys.Count > 1 ? "\n" + string.Join("\n", lines) : (p.DoneItems.Count > 0 ? "" : lines.First().Replace($"• «{names[0]}»", "").Trim() is { Length: > 0 } one ? " " + one : ""))
                + $"\nTelegram ID: {p.Chat} · заявка {p.Id}";
     }
 
@@ -905,7 +960,7 @@ public class Bot
         lock (_lock) return _snap?.Users.FirstOrDefault(x => Key(x) == key);
     }
 
-    async Task<string?> PayCallbackAsync(string chat, string kind, string arg)
+    async Task<string?> PayCallbackAsync(string chat, string kind, string arg, long messageId)
     {
         if (!_cfg.PayEnabled) return "Оплата выключена";
         switch (kind)
@@ -914,32 +969,66 @@ public class Bot
                 {
                     var u = SubsOf(chat).FirstOrDefault(x => Key(x) == arg);
                     if (u == null || !Payable(u)) return "Эту подписку нельзя продлить здесь";
-                    ShowPlans(chat, u);
+                    ShowPlans(chat, new List<UserRow> { u });
+                    return null;
+                }
+            case "paysel":
+                StartPay(chat);
+                return null;
+            case "sel":
+            case "selx":
+                {
+                    var pay = SubsOf(chat).Where(Payable).ToList();
+                    lock (_lock)
+                    {
+                        if (!_paySel.TryGetValue(chat, out var sel)) _paySel[chat] = sel = new();
+                        if (kind == "selx") { sel.Clear(); foreach (var u in pay.Where(Expiring)) sel.Add(Key(u)); }
+                        else if (pay.Any(u => Key(u) == arg)) { if (!sel.Remove(arg)) sel.Add(arg); }
+                    }
+                    await ShowSelection(chat, messageId);
+                    return kind == "selx" && !pay.Any(Expiring) ? "Истекающих в ближайшие дни нет" : null;
+                }
+            case "selgo":
+                {
+                    HashSet<string> sel;
+                    lock (_lock) sel = _paySel.TryGetValue(chat, out var s0) ? new HashSet<string>(s0) : new();
+                    var users = SubsOf(chat).Where(u => Payable(u) && sel.Contains(Key(u))).ToList();
+                    if (users.Count == 0) return "Отметьте хотя бы одну подписку";
+                    ShowPlans(chat, users);
                     return null;
                 }
             case "plan":
                 {
                     var i = arg.LastIndexOf(':');
                     if (i < 0 || !int.TryParse(arg[(i + 1)..], out var months)) return null;
-                    var key = arg[..i];
-                    var u = SubsOf(chat).FirstOrDefault(x => Key(x) == key);
+                    var setOrKey = arg[..i];
+                    List<string> keys;
+                    lock (_lock) keys = _paySets.TryGetValue(setOrKey, out var ks) ? ks : new List<string> { setOrKey };   // старые кнопки — одна подписка
+                    var mine = SubsOf(chat);
+                    var users = keys.Select(k => mine.FirstOrDefault(x => Key(x) == k)).Where(u => u != null && Payable(u)).Select(u => u!).ToList();
                     var plan = _cfg.PayPlans.FirstOrDefault(p => p.months == months);
-                    if (u == null || !Payable(u) || plan.months == 0) return "Тариф не найден";
+                    if (users.Count == 0 || plan.months == 0) return "Тариф или подписки не найдены — начните заново";
                     var pay = new Payment
                     {
                         Id = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant(),
-                        Chat = chat, UserUuid = Key(u), Username = u.Username, Months = months, Amount = plan.price,
+                        Chat = chat, UserUuid = Key(users[0]), Username = string.Join(", ", users.Select(u => u.Username)),
+                        Items = users.Select(Key).ToList(), Names = users.Select(u => u.Username).ToList(),
+                        Months = months, Price = plan.price, Amount = plan.price * users.Count,
                     };
                     lock (_lock)
                     {
                         _state.Payments.Add(pay);
                         if (_state.Payments.Count > 500) _state.Payments.RemoveRange(0, _state.Payments.Count - 500);
+                        _paySel.Remove(chat);
                         _state.Save(_cfg.DataDir);
                     }
                     var details = _cfg.PayDetails != "" ? _cfg.PayDetails : "реквизиты уточните у администратора";
-                    _tg.Send(chat, $"К оплате: {Money(plan.price)} — продление «{u.Username}» на {MonthsText(months)}.\n\n" +
+                    var what = users.Count == 1
+                        ? $"продление «{users[0].Username}» на {MonthsText(months)}"
+                        : $"продление {users.Count} подписок на {MonthsText(months)} ({users.Count} × {Money(plan.price)}): {string.Join(", ", users.Select(u => u.Username))}";
+                    _tg.Send(chat, $"К оплате: {Money(pay.Amount)} — {what}.\n\n" +
                                    $"Реквизиты для перевода:\n{details}\n\n" +
-                                   "После перевода нажмите «Я оплатил». Администратор проверит поступление и подписка продлится автоматически.",
+                                   "Переведите всю сумму одним платежом и нажмите «Я оплатил». Администратор проверит поступление, и подписки продлятся автоматически.",
                         Telegram.Inline(new[] { ("✅ Я оплатил", "paid:" + pay.Id), ("Отмена", "cancel:" + pay.Id) }));
                     return null;
                 }
@@ -957,9 +1046,9 @@ public class Bot
                         _state.Save(_cfg.DataDir);
                     }
                     if (kind == "cancel") { _tg.Send(chat, "Заявка отменена.", ChatKeyboard(chat)); return null; }
-                    _tg.Send(chat, "Спасибо! Отправил администратору на проверку — после подтверждения подписка продлится, я напишу.\n\n" +
+                    _tg.Send(chat, "Спасибо! Отправил администратору на проверку — после подтверждения " + (p.Keys().Count > 1 ? "подписки продлятся" : "подписка продлится") + ", я напишу.\n\n" +
                                    "Если есть скриншот или чек перевода — пришлите его сюда, это ускорит проверку.", ChatKeyboard(chat));
-                    var info = PayInfo(p, UserByKey(p.UserUuid));
+                    var info = PayInfo(p);
                     foreach (var a in _cfg.Chats) _tg.Send(a, "💳 Оплата на проверку: " + info, PayButtons(p.Id));
                     Log.Write($"оплата на проверку: {p.Username} {p.Months} мес {p.Amount}");
                     return null;
@@ -974,40 +1063,61 @@ public class Bot
                     if (p.Status != "sent") return p.Status == "ok" ? "Уже подтверждено" : p.Status == "no" ? "Уже отклонено" : "Заявка закрыта";
                     if (kind == "no")
                     {
+                        if (p.DoneItems.Count > 0) return "Часть подписок уже продлена — отклонить нельзя";
                         lock (_lock) { p.Status = "no"; p.Done = DateTime.Now; p.By = chat; _state.AwaitProof.Remove(p.Chat); _state.Save(_cfg.DataDir); }
                         _tg.Send(p.Chat, $"❌ Оплата продления «{p.Username}» не подтверждена. Если вы переводили деньги — напишите администратору.", ChatKeyboard(p.Chat));
                         foreach (var a in _cfg.Chats) _tg.Send(a, $"❌ Оплата отклонена: «{p.Username}», {Money(p.Amount)} (заявка {p.Id})", AdminKeyboard(a));
                         return "Отклонено";
                     }
-                    var u = UserByKey(p.UserUuid);
-                    if (u == null) return "Пользователь не найден в панели";
                     lock (_lock)
                     {
                         if (p.Status != "sent") return "Уже обрабатывается";
                         p.Status = "busy";   // защита от двойного нажатия
                     }
-                    try
+                    // продлеваем каждую подписку; уже продлённые (при повторном нажатии после ошибки) пропускаем
+                    var keys = p.Keys();
+                    var names = p.AllNames();
+                    var errors = new List<string>();
+                    for (int k = 0; k < keys.Count; k++)
                     {
-                        var newExp = await _api.ExtendUserAsync(_cfg.Writer, u, p.Months);
+                        if (p.DoneItems.ContainsKey(keys[k])) continue;
+                        var name = k < names.Count ? names[k] : keys[k];
+                        var u = UserByKey(keys[k]);
+                        if (u == null) { errors.Add($"«{name}»: пользователь не найден в панели"); continue; }
+                        try
+                        {
+                            var newExp = await _api.ExtendUserAsync(_cfg.Writer, u, p.Months);
+                            lock (_lock) { p.DoneItems[keys[k]] = newExp.ToLocalTime().ToString("dd.MM.yyyy"); _state.Save(_cfg.DataDir); }
+                        }
+                        catch (Exception ex) { errors.Add($"«{name}»: {ex.Message}"); Log.Write($"продление {name} не удалось: {ex.Message}"); }
+                    }
+                    string Summary() => string.Join(", ", keys.Select((key, k) =>
+                        p.DoneItems.TryGetValue(key, out var d) ? $"«{(k < names.Count ? names[k] : key)}» до {d}" : null).Where(x => x != null));
+                    if (errors.Count == 0)
+                    {
                         lock (_lock)
                         {
-                            p.Status = "ok"; p.Done = DateTime.Now; p.By = chat; p.NewExpire = newExp.ToLocalTime().ToString("dd.MM.yyyy");
+                            p.Status = "ok"; p.Done = DateTime.Now; p.By = chat; p.NewExpire = Summary();
+                            if (keys.Count == 1) p.NewExpire = p.DoneItems.Values.FirstOrDefault() ?? "";
                             _state.AwaitProof.Remove(p.Chat);
                             _state.Save(_cfg.DataDir);
                         }
-                        _tg.Send(p.Chat, $"✅ Оплата получена, спасибо! Подписка «{p.Username}» продлена до {p.NewExpire}.", ChatKeyboard(p.Chat));
-                        foreach (var a in _cfg.Chats) _tg.Send(a, $"✅ Оплата подтверждена: «{p.Username}» +{MonthsText(p.Months)}, {Money(p.Amount)} → до {p.NewExpire}", AdminKeyboard(a));
-                        Log.Write($"оплата подтверждена: {p.Username} до {p.NewExpire}");
+                        var userText = keys.Count == 1
+                            ? $"✅ Оплата получена, спасибо! Подписка «{names[0]}» продлена до {p.NewExpire}."
+                            : "✅ Оплата получена, спасибо! Продлено:\n" + string.Join("\n", keys.Select((key, k) => $"• «{(k < names.Count ? names[k] : key)}» — до {p.DoneItems[key]}"));
+                        _tg.Send(p.Chat, userText, ChatKeyboard(p.Chat));
+                        foreach (var a in _cfg.Chats) _tg.Send(a, $"✅ Оплата подтверждена: +{MonthsText(p.Months)}, {Money(p.Amount)} → {Summary()}", AdminKeyboard(a));
+                        Log.Write($"оплата подтверждена: {Summary()}");
                         await RefreshAsync();
-                        return "Продлено до " + p.NewExpire;
+                        return keys.Count == 1 ? "Продлено до " + p.NewExpire : $"Продлено: {keys.Count}";
                     }
-                    catch (Exception ex)
-                    {
-                        lock (_lock) p.Status = "sent";
-                        Log.Write("продление не удалось: " + ex.Message);
-                        _tg.Send(chat, $"⚠️ Не удалось продлить «{p.Username}»: {ex.Message}\nПродлите вручную в панели или задайте токен с правом изменения пользователей (REMNAWAVE_WRITE_TOKEN) и нажмите «Подтвердить» ещё раз.", PayButtons(p.Id));
-                        return "Ошибка продления";
-                    }
+                    lock (_lock) { p.Status = "sent"; _state.Save(_cfg.DataDir); }
+                    var partial = p.DoneItems.Count > 0 ? $"\nУже продлено: {Summary()} — повторно не продлится." : "";
+                    _tg.Send(chat, "⚠️ Не удалось продлить:\n" + string.Join("\n", errors) + partial +
+                                   "\nИсправьте (или продлите вручную в панели) и нажмите «Подтвердить» ещё раз — продлятся только оставшиеся." + (errors.Any(e => e.Contains("401") || e.Contains("403")) ? " Нужен токен с правом изменять пользователей (REMNAWAVE_WRITE_TOKEN)." : ""),
+                        PayButtons(p.Id));
+                    if (p.DoneItems.Count > 0) await RefreshAsync();
+                    return "Ошибка продления";
                 }
         }
         return null;
@@ -1019,7 +1129,7 @@ public class Bot
         Payment? p;
         lock (_lock) p = _state.Payments.FirstOrDefault(x => x.Id == pid && x.Chat == chat);
         if (p == null || p.Status != "sent") { lock (_lock) _state.AwaitProof.Remove(chat); _tg.Send(chat, "Эта заявка уже обработана.", ChatKeyboard(chat)); return; }
-        var info = PayInfo(p, UserByKey(p.UserUuid));
+        var info = PayInfo(p);
         foreach (var a in _cfg.Chats) _tg.Copy(a, chat, messageId, "🧾 Скриншот оплаты: " + info, PayButtons(p.Id));
         _tg.Send(chat, "Скриншот передан администратору. Как только оплату подтвердят — напишу.", ChatKeyboard(chat));
     }
@@ -1048,7 +1158,7 @@ public class Bot
             sb.AppendLine();
             foreach (var p in list.Take(15))
                 sb.AppendLine($"{(p.Status == "ok" ? "✅" : p.Status == "no" ? "❌" : "⏳")} {p.Created:dd.MM HH:mm} · {p.Username} · {MonthsText(p.Months)} · {Money(p.Amount)}"
-                              + (p.Status == "ok" ? $" → до {p.NewExpire}" : ""));
+                              + (p.Status == "ok" ? (p.Keys().Count > 1 ? $" → {p.NewExpire}" : $" → до {p.NewExpire}") : ""));
             if (list.Count == 0) sb.AppendLine("Заявок пока не было.");
             return sb.ToString().TrimEnd();
         }

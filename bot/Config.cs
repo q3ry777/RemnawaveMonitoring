@@ -215,6 +215,14 @@ public class Payment
     public DateTime? Done { get; set; }
     public string By { get; set; } = "";
     public string NewExpire { get; set; } = "";
+    // Несколько подписок в одной заявке (массовая оплата). Пусто — старая заявка на одну подписку (UserUuid/Username)
+    public List<string> Items { get; set; } = new();
+    public List<string> Names { get; set; } = new();
+    public Dictionary<string, string> DoneItems { get; set; } = new();   // продлённые: ключ подписки → новая дата
+    public int Price { get; set; }                                        // цена за одну подписку
+
+    public List<string> Keys() => Items.Count > 0 ? Items : new List<string> { UserUuid };
+    public List<string> AllNames() => Names.Count > 0 ? Names : new List<string> { Username };
 }
 
 public static class Log
