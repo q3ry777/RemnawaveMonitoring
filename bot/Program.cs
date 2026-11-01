@@ -614,6 +614,11 @@ public class Bot
             if (cmd == "/my") { await ShowMyAsync(chat); return; }
             if (cmd == "/pay") { StartPay(chat); return; }
             if (cmd == "/broadcast") { PrepareBroadcast(chat, arg); return; }
+            if (cmd == "/payments" && PendingPayments().Count is var np and > 0)
+            {   // заявки на проверке — кнопкой под сводкой (нижняя клавиатура остаётся прежней)
+                _tg.Send(chat, reply!, Telegram.Inline(new[] { ($"⏳ Показать заявки на проверке ({np})", "pend:") }));
+                return;
+            }
             _tg.Send(chat, reply!, AdminKeyboard(chat));
             return;
         }
@@ -819,6 +824,14 @@ public class Bot
         {
             var reply = await PayCallbackAsync(chat, kind, colon > 0 ? data[(colon + 1)..] : "", messageId);
             await _tg.AnswerCallbackAsync(id, reply ?? "");
+            return;
+        }
+        if (kind == "pend")
+        {
+            if (!_cfg.Chats.Contains(chat)) { await _tg.AnswerCallbackAsync(id); return; }
+            var pend = PendingPayments();
+            await _tg.AnswerCallbackAsync(id, pend.Count == 0 ? "Заявок на проверке нет" : "");
+            foreach (var p in pend) _tg.Send(chat, $"⏳ Заявка от {p.Created:dd.MM HH:mm}: " + PayInfo(p), PayButtons(p.Id));
             return;
         }
         if (!data.StartsWith("sub:")) { await _tg.AnswerCallbackAsync(id); return; }
@@ -1143,6 +1156,11 @@ public class Bot
                 .ToList());
     }
 
+    List<Payment> PendingPayments()
+    {
+        lock (_lock) return _state.Payments.Where(p => p.Status == "sent").OrderBy(p => p.Created).ToList();
+    }
+
     string BuildPayments()
     {
         lock (_lock)
@@ -1154,7 +1172,7 @@ public class Bot
             var sb = new StringBuilder();
             sb.AppendLine($"💳 Оплаты · за {now:MM.yyyy}: {month.Count} на {Money(month.Sum(p => p.Amount))}");
             var pending = list.Where(p => p.Status == "sent").ToList();
-            if (pending.Count > 0) sb.AppendLine($"⏳ Ждут проверки: {pending.Count} (кнопки — в сообщениях о заявках)");
+            if (pending.Count > 0) sb.AppendLine($"⏳ Ждут проверки: {pending.Count} — кнопка ниже покажет их с «Подтвердить / Отклонить»");
             sb.AppendLine();
             foreach (var p in list.Take(15))
                 sb.AppendLine($"{(p.Status == "ok" ? "✅" : p.Status == "no" ? "❌" : "⏳")} {p.Created:dd.MM HH:mm} · {p.Username} · {MonthsText(p.Months)} · {Money(p.Amount)}"
