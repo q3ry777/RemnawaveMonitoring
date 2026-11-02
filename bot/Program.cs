@@ -42,6 +42,7 @@ public class Bot
     readonly Webhook _wh;
     readonly BotApi _apiServer;
     readonly Api _api = new();
+    readonly CheckHost _check = new();
     readonly BotState _state;
     readonly IncidentLog _log;
     readonly Dictionary<string, int> _strikes = new();
@@ -515,23 +516,24 @@ public class Bot
     // ---- клавиатуры ----
     const string BtnMy = "👤 Мои подписки", BtnRemindOff = "🔕 Не напоминать", BtnRemindOn = "🔔 Напоминать",
                  BtnDnd = "🔕 Не беспокоить", BtnPay = "💳 Продлить подписку", BtnPayments = "💳 Оплаты",
-                 BtnBotUsers = "🤝 Бот у пользователей", BtnSupport = "✉️ Написать администратору";
+                 BtnBotUsers = "🤝 Бот у пользователей", BtnCheck = "🔎 Проверка из РФ", BtnSupport = "✉️ Написать администратору";
 
     static readonly (string text, string cmd)[] AdminButtons =
     {
         ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
         ("⚠️ Проблемы", "/problems"), ("ℹ️ Версии", "/version"), (BtnDnd, "/dnd"), (BtnMy, "/my"),
-        (BtnPay, "/pay"), (BtnPayments, "/payments"), (BtnBotUsers, "/botusers"),
+        (BtnPay, "/pay"), (BtnPayments, "/payments"), (BtnBotUsers, "/botusers"), (BtnCheck, "/check"),
     };
 
     string AdminKeyboard(string chat)
     {
-        var rows = new List<string[]> { new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" }, new[] { "⚠️ Проблемы", "ℹ️ Версии", BtnDnd } };
-        var last = new List<string>();
+        var rows = new List<string[]> { new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" }, new[] { "⚠️ Проблемы", "ℹ️ Версии", BtnCheck } };
+        var last = new List<string> { BtnDnd };
         if (_cfg.UserCabinet && SubsOf(chat).Count > 0) last.Add(BtnMy);
         if (_cfg.PayEnabled && _cfg.Chats.Contains(chat)) last.Add(BtnPayments);
         if ((_cfg.UserCabinet || _cfg.UserReminders) && _cfg.Chats.Contains(chat)) last.Add(BtnBotUsers);
-        if (last.Count > 0) rows.Add(last.ToArray());
+        if (last.Count > 3) { rows.Add(last.Take(2).ToArray()); rows.Add(last.Skip(2).ToArray()); }
+        else rows.Add(last.ToArray());
         return Telegram.Keyboard(rows.ToArray());
     }
 
@@ -552,7 +554,7 @@ public class Bot
     const string AdminHelp =
         "Команды (или кнопки внизу):\n" +
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн и с каких IP\n/problems — активные проблемы\n" +
-        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота\n/broadcast текст — рассылка всем, кто подключил бота\n\nНа сообщения пользователей «📨» отвечайте ответом (reply) — бот перешлёт ответ.";
+        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота\n/check — доступность нод из России (check-host.net), /check IP:порт — любой адрес\n/broadcast текст — рассылка всем, кто подключил бота\n\nНа сообщения пользователей «📨» отвечайте ответом (reply) — бот перешлёт ответ.";
 
     async Task OnMessageAsync(string chat, string raw, long messageId, bool media, string who, string replyTo)
     {
@@ -607,6 +609,7 @@ public class Bot
                 "/pay" => null,
                 "/payments" => BuildPayments(),
                 "/botusers" => BuildBotUsers(),
+                "/check" => null,
                 "/broadcast" => null,
                 "" => "Не понял. Команды — кнопками внизу или /help.",
                 _ => "Не знаю такой команды.\n\n" + AdminHelp,
@@ -614,6 +617,7 @@ public class Bot
             if (cmd == "/my") { await ShowMyAsync(chat); return; }
             if (cmd == "/pay") { StartPay(chat); return; }
             if (cmd == "/broadcast") { PrepareBroadcast(chat, arg); return; }
+            if (cmd == "/check") { await StartCheckAsync(chat, arg); return; }
             if (cmd == "/payments" && PendingPayments().Count is var np and > 0)
             {   // заявки на проверке — кнопкой под сводкой (нижняя клавиатура остаётся прежней)
                 _tg.Send(chat, reply!, Telegram.Inline(new[] { ($"⏳ Показать заявки на проверке ({np})", "pend:") }));
@@ -824,6 +828,13 @@ public class Bot
         {
             var reply = await PayCallbackAsync(chat, kind, colon > 0 ? data[(colon + 1)..] : "", messageId);
             await _tg.AnswerCallbackAsync(id, reply ?? "");
+            return;
+        }
+        if (kind == "chk")
+        {
+            if (!IsAdmin(chat)) { await _tg.AnswerCallbackAsync(id); return; }
+            await _tg.AnswerCallbackAsync(id, _check.Busy ? "Идёт другая проверка — эта начнётся следом" : "");
+            _ = RunCheckAsync(chat, colon > 0 ? data[(colon + 1)..] : "");
             return;
         }
         if (kind == "pend")
@@ -1154,6 +1165,101 @@ public class Bot
                 .Where(p => p.Status is "sent" or "ok" or "no" or "busy")
                 .Select(p => new PaymentInfo(p.Id, p.Created, p.Done, p.Status == "busy" ? "sent" : p.Status, p.Username, p.Months, p.Amount, p.NewExpire, p.Chat))
                 .ToList());
+    }
+
+    // ---- проверка доступности из России (check-host.net) ----
+    async Task StartCheckAsync(string chat, string arg)
+    {
+        arg = arg.Trim();
+        if (arg != "") { _ = RunCheckAsync(chat, "addr:" + arg); return; }
+        List<NodeRow> nodes;
+        lock (_lock) nodes = _snap?.Nodes.Where(n => n.Address != "").ToList() ?? new();
+        var rows = nodes.Select(n => new[] { ($"{Fmt.Flag(n.Country)}{n.Name} · {n.Address}", "chk:" + (n.NodeUuid != "" ? n.NodeUuid : n.Name)) }).ToList();
+        if (nodes.Count > 1) rows.Add(new[] { ("Все ноды", "chk:*") });
+        _tg.Send(chat, "🔎 Проверка TCP-доступности с российских точек check-host.net — видно, не заблокирован ли IP из России.\n" +
+                       (nodes.Count > 0 ? "Выберите ноду (порты — из её инбаундов) или напишите /check IP:порт." : "Нод с адресом нет — напишите /check IP:порт."),
+            rows.Count > 0 ? Telegram.InlineRows(rows) : AdminKeyboard(chat));
+        await Task.CompletedTask;
+    }
+
+    // Порты инбаундов ноды из панели (configProfile.activeInbounds[].port); пусто — CHECK_PORT
+    async Task<Dictionary<string, List<int>>> NodePortsAsync()
+    {
+        var res = new Dictionary<string, List<int>>();
+        try
+        {
+            var raw = await _api.TryGetAsync(_cfg, "/api/nodes");
+            if (raw == "") return res;
+            using var doc = JsonDocument.Parse(raw);
+            foreach (var n in J.Items(doc.RootElement, "nodes"))
+            {
+                var ports = new List<int>();
+                if (J.P(n, "configProfile", "activeInbounds") is JsonElement ib && ib.ValueKind == JsonValueKind.Array)
+                    foreach (var i in ib.EnumerateArray())
+                        if (J.N(i, "port") is var pt and > 0 and < 65536 && !ports.Contains((int)pt)) ports.Add((int)pt);
+                res[J.S(n, "uuid")] = ports;
+            }
+        }
+        catch (Exception ex) { Log.Write("порты нод: " + ex.Message); }
+        return res;
+    }
+
+    async Task RunCheckAsync(string chat, string what)
+    {
+        try
+        {
+            // что проверяем: (подпись, адрес:порт, нода в сети по данным панели или null — неизвестно)
+            var targets = new List<(string title, string target, bool? connected)>();
+            if (what.StartsWith("addr:"))
+            {
+                var a = what[5..].Trim().Replace("https://", "").Replace("http://", "").TrimEnd('/');
+                if (a == "" || a.Contains(' ')) { _tg.Send(chat, "Формат: /check 185.200.196.14:443 (порт можно не указывать — " + _cfg.CheckPort + ")", AdminKeyboard(chat)); return; }
+                var hasPort = a.StartsWith("[") ? a.Contains("]:") : a.Count(c => c == ':') == 1;
+                targets.Add((a, hasPort ? a : (a.Contains(':') && !a.StartsWith("[") ? $"[{a}]" : a) + ":" + _cfg.CheckPort, null));
+            }
+            else
+            {
+                var key = what.StartsWith("chk:") ? what[4..] : what;
+                List<NodeRow> nodes;
+                lock (_lock) nodes = _snap?.Nodes.Where(n => n.Address != "" && (key == "*" || n.NodeUuid == key || n.Name == key)).ToList() ?? new();
+                if (nodes.Count == 0) { _tg.Send(chat, "Нода не найдена — откройте /check заново.", AdminKeyboard(chat)); return; }
+                var ports = await NodePortsAsync();
+                foreach (var n in nodes)
+                {
+                    var ps = ports.TryGetValue(n.NodeUuid, out var l) && l.Count > 0 ? l.Take(3).ToList() : new List<int> { _cfg.CheckPort };
+                    var host = n.Address.Contains(':') ? $"[{n.Address}]" : n.Address;
+                    foreach (var p in ps) targets.Add(($"{Fmt.Flag(n.Country)}{n.Name}", $"{host}:{p}", n.Connected));
+                }
+            }
+            _tg.Send(chat, targets.Count == 1 ? $"🔎 Проверяю {targets[0].target} из России… (до 30 сек)" : $"🔎 Проверяю {targets.Count} адрес(а) из России… (до 30 сек на каждый)", AdminKeyboard(chat));
+            foreach (var t in targets)
+            {
+                try
+                {
+                    var r = await _check.CheckTcpAsync(t.target);
+                    var ok = r.Points.Count(p => p.Ok);
+                    var answered = r.Points.Count(p => p.Ms >= 0 || p.Ok);
+                    var sb = new StringBuilder($"🔎 {t.title}" + (t.target.StartsWith(t.title + ":") || t.title == t.target ? t.target[t.title.Length..] : $" · {t.target}") + "\n");
+                    foreach (var p in r.Points)
+                        sb.AppendLine(p.Ok ? $"✅ {p.City} — {Math.Round(p.Ms)} мс" : p.Ms < 0 ? $"⏳ {p.City} — нет ответа от точки" : $"❌ {p.City} — {CheckHost.ErrorText(p.Error)}");
+                    sb.AppendLine();
+                    sb.AppendLine(answered == 0 ? "❔ Точки check-host не ответили — попробуйте позже."
+                        : ok == answered ? "✅ Из России доступен."
+                        : ok > 0 ? $"⚠️ Доступен из {ok} из {answered} точек — частичная блокировка или проблемы у части провайдеров."
+                        : t.connected == true ? "❌ Из России недоступен, а панель с нодой связана — похоже на блокировку IP."
+                        : t.connected == false ? "❌ Недоступен, и панель тоже не видит ноду — скорее проблема с сервером."
+                        : "❌ Из России недоступен — блокировка, либо сервер/порт не отвечает.");
+                    sb.Append("Отчёт: " + r.Link);
+                    _tg.Send(chat, sb.ToString(), AdminKeyboard(chat));
+                }
+                catch (Exception ex)
+                {
+                    Log.Write($"check-host {t.target}: {ex.Message}");
+                    _tg.Send(chat, $"⚠️ {t.target}: check-host не ответил ({ex.Message}). Попробуйте позже.", AdminKeyboard(chat));
+                }
+            }
+        }
+        catch (Exception ex) { Log.Write("проверка: " + ex.Message); }
     }
 
     List<Payment> PendingPayments()

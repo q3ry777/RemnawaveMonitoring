@@ -34,6 +34,8 @@ public class BotConfig : IPanelConfig
     // Вебхуки панели: бот слушает http://remnawave-bot:{WebhookPort}/webhook, подпись — WEBHOOK_SECRET
     public string WebhookSecret { get; init; } = "";
     public int WebhookPort { get; init; } = 8080;
+    // Проверка доступности из РФ (check-host.net): порт, если у ноды не удалось узнать порты инбаундов
+    public int CheckPort { get; init; } = 443;
     // Оплата переводом с подтверждением админом: тарифы (месяцев, цена), реквизиты, токен с правом продления
     public bool PayEnabled { get; init; }
     public List<(int months, int price)> PayPlans { get; init; } = new();
@@ -90,6 +92,7 @@ public class BotConfig : IPanelConfig
             RemindTraffic = Math.Min(99, Int("REMIND_TRAFFIC", 90, 50)),
             WebhookSecret = Env("WEBHOOK_SECRET"),
             WebhookPort = Int("WEBHOOK_PORT", 8080, 1),
+            CheckPort = Int("CHECK_PORT", 443, 1),
             PayEnabled = Flag("PAY_ENABLED", false),
             PayPlans = ParsePlans(Env("PAY_PLANS", "1:150,3:400,6:750,12:1400")),
             PayDetails = Env("PAY_DETAILS").Replace("\\n", "\n"),

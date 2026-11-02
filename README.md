@@ -194,6 +194,8 @@
 
 **Рассылка.** `/broadcast текст` (можно в несколько строк) — бот покажет, сколько человек получат, и спросит «✅ Отправить / Отмена». Получают все пользователи, подключившие бота. Повторное нажатие «Отправить» не шлёт дважды.
 
+**Проверка доступности из России.** Кнопка «🔎 Проверка из РФ» (`/check`): бот предлагает ноды из панели (и «Все ноды») и проверяет TCP-подключение к их IP с российских точек [check-host.net](https://check-host.net) (Москва, Санкт-Петербург, Екатеринбург и др. — все российские точки сервиса). Порты берутся из инбаундов ноды в панели, если их не видно — `CHECK_PORT` (по умолчанию 443). Любой адрес: `/check 185.200.196.14:443` (без порта — `CHECK_PORT`). В ответе — результат по каждой точке и вывод: доступен / частично / недоступен, «похоже на блокировку IP», если из России не подключается, а панель с нодой связана, и ссылка на отчёт check-host. Точки check-host стоят в дата-центрах: у домашних и мобильных провайдеров картина может отличаться; блокировку протокола (DPI) при открытом порте такая проверка не покажет.
+
 **Вкладка «оплаты» в программе.** Если включена, бот открывает на сервере отдельный порт (по умолчанию 8090; команда установки разрешает его в ufw и показывает IP сервера). Программа раз в 5 минут и при открытии вкладки забирает заявки: запрос подписан ключом (HMAC, со временем — от повтора), ответ зашифрован AES-256-GCM — без ключа данные не прочитать. Во вкладке — сумма за текущий месяц и всего, суммы по месяцам и список заявок (дата, подписка, срок, сумма, статус, до какого числа продлено). Подтверждать оплаты по-прежнему в боте. Адрес — IP сервера или домен без прокси Cloudflare.
 
 **Установка** (в программе: настройки → «telegram-бот»):
@@ -218,7 +220,7 @@ nano /opt/remnawave-bot/.env && docker compose up -d                   # пом�
 docker compose down && rm -rf /opt/remnawave-bot                       # удалить (из /opt/remnawave-bot)
 ```
 
-Параметры `.env`: `PANEL_URL`, `REMNAWAVE_API_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (можно несколько через запятую), `TZ`, `INTERVAL_SEC`, `ONLINE_WINDOW_SEC`, `NOTIFY_NODES`, `NOTIFY_LIMITS`, `NOTIFY_BILLING`, `NOTIFY_UPDATES`, `QUIET_HOURS` (часы через запятую или диапазон `23-8`), `DND_TIME`, `NOTIFY_USERS`, `NOTIFY_PANEL`, `TELEGRAM_OBSERVERS` (`ID:виды;ID:виды`), `USER_CABINET`, `USER_REMINDERS`, `REMIND_DAYS`, `REMIND_TRAFFIC`, `WEBHOOK_SECRET` (пусто — вебхуки выключены), `WEBHOOK_PORT`, `PAY_ENABLED`, `PAY_PLANS` (`месяцев:цена,…`), `PAY_DETAILS` (`\n` — перенос строки), `PAY_CURRENCY`, `REMNAWAVE_WRITE_TOKEN`, `BOT_API_KEY` (пусто — вкладка «оплаты» выключена), `BOT_API_PORT`, `TELEGRAM_PROXY` (необязательно).
+Параметры `.env`: `PANEL_URL`, `REMNAWAVE_API_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (можно несколько через запятую), `TZ`, `INTERVAL_SEC`, `ONLINE_WINDOW_SEC`, `NOTIFY_NODES`, `NOTIFY_LIMITS`, `NOTIFY_BILLING`, `NOTIFY_UPDATES`, `QUIET_HOURS` (часы через запятую или диапазон `23-8`), `DND_TIME`, `NOTIFY_USERS`, `NOTIFY_PANEL`, `TELEGRAM_OBSERVERS` (`ID:виды;ID:виды`), `USER_CABINET`, `USER_REMINDERS`, `REMIND_DAYS`, `REMIND_TRAFFIC`, `WEBHOOK_SECRET` (пусто — вебхуки выключены), `WEBHOOK_PORT`, `PAY_ENABLED`, `PAY_PLANS` (`месяцев:цена,…`), `PAY_DETAILS` (`\n` — перенос строки), `PAY_CURRENCY`, `REMNAWAVE_WRITE_TOKEN`, `BOT_API_KEY` (пусто — вкладка «оплаты» выключена), `BOT_API_PORT`, `CHECK_PORT` (порт для проверки из РФ, если у ноды не видно портов инбаундов; по умолчанию 443), `TELEGRAM_PROXY` (необязательно).
 
 ---
 
