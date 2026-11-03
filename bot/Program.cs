@@ -783,14 +783,11 @@ public class Bot
         var pay = payable.Count > 1
             ? new List<(string, string)> { ($"💳 Продлить несколько ({payable.Count})", "paysel:") }
             : payable.Select(u => ($"💳 Продлить «{u.Username}»", "pay:" + Key(u))).ToList();
-        if (pay.Count == 0) _tg.Send(chat, sb.ToString(), Telegram.Inline(buttons));
-        else
-        {
-            // кнопки подписок по две в ряд, продление — отдельными строками
-            var rows = buttons.Select((b, i) => (b, i)).GroupBy(x => x.i / 2).Select(g => g.Select(x => x.b).ToArray())
-                .Concat(pay.Select(p => new[] { p })).ToArray();
-            _tg.Send(chat, sb.ToString(), Telegram.InlineRows(rows));
-        }
+        // кнопки подписок по две в ряд, трафик и продление — отдельными строками
+        var rows = buttons.Select((b, i) => (b, i)).GroupBy(x => x.i / 2).Select(g => g.Select(x => x.b).ToArray())
+            .Append(new[] { ("📈 Трафик по месяцам", "traf:*") })
+            .Concat(pay.Select(p => new[] { p })).ToArray();
+        _tg.Send(chat, sb.ToString(), Telegram.InlineRows(rows));
     }
 
     static string StatusRu(string s) => s switch
@@ -845,6 +842,12 @@ public class Bot
             foreach (var p in pend) _tg.Send(chat, $"⏳ Заявка от {p.Created:dd.MM HH:mm}: " + PayInfo(p), PayButtons(p.Id));
             return;
         }
+        if (kind == "traf")
+        {
+            await _tg.AnswerCallbackAsync(id);
+            await ShowTrafficAsync(chat, colon > 0 ? data[(colon + 1)..] : "*");
+            return;
+        }
         if (!data.StartsWith("sub:")) { await _tg.AnswerCallbackAsync(id); return; }
         var key = data[4..];
         var u = SubsOf(chat).FirstOrDefault(x => (x.UserUuid != "" ? x.UserUuid : x.Username) == key);
@@ -888,9 +891,90 @@ public class Bot
             }
         }
         catch { }
+        try
+        {
+            var months = await MonthlyUsageAsync(u, 2);
+            if (months != null && months.Count > 0)
+                sb.AppendLine("Трафик за месяц: " + string.Join(", ", months.Select(m => $"{MonthName(m.Month)} — {J.Bytes(m.Bytes)}" + (m.Partial ? $" (по {now.ToLocalTime():dd.MM})" : ""))));
+        }
+        catch { }
         sb.AppendLine(u.IsOnline ? "Сейчас подключено" : u.Online != "—" ? $"Последнее подключение: {u.Online}" : "Ещё не подключались");
         if (u.SubscriptionUrl != "") sb.Append($"\nСсылка на подписку:\n{u.SubscriptionUrl}");
-        _tg.Send(chat, sb.ToString().TrimEnd(), Payable(u) ? Telegram.Inline(new[] { ("💳 Продлить", "pay:" + Key(u)) }) : ChatKeyboard(chat));
+        var btns = new List<(string, string)> { ("📈 Трафик по месяцам", "traf:" + Key(u)) };
+        if (Payable(u)) btns.Add(("💳 Продлить", "pay:" + Key(u)));
+        _tg.Send(chat, sb.ToString().TrimEnd(), Telegram.Inline(btns));
+    }
+
+    // ---- трафик по календарным месяцам (из статистики панели по дням) ----
+    public record MonthUsage(DateTime Month, double Bytes, bool Partial);
+    readonly Dictionary<string, (DateTime at, List<MonthUsage> data)> _usageCache = new();
+
+    static readonly string[] Months = { "январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь" };
+    static string MonthName(DateTime m) => Months[m.Month - 1];
+
+    // Последние count месяцев (текущий — неполный), от новых к старым. Месяцы до создания пользователя не показываются. null — панель не отдаёт статистику
+    async Task<List<MonthUsage>?> MonthlyUsageAsync(UserRow u, int count)
+    {
+        var key = Key(u) + "|" + count;
+        lock (_lock)
+            if (_usageCache.TryGetValue(key, out var c) && DateTime.Now - c.at < TimeSpan.FromMinutes(10)) return c.data;
+        var today = Api.Now.UtcDateTime.Date;
+        var first = new DateTime(today.Year, today.Month, 1).AddMonths(-(count - 1));
+        var usage = await _api.GetUserUsageAsync(_cfg, u.UserId, u.UserUuid, (int)(today - first).TotalDays + 1);
+        if (usage == null) return null;
+        DateTime? created = null;
+        try
+        {
+            using var d = JsonDocument.Parse(u.Raw);
+            if (DateTimeOffset.TryParse(J.S(d.RootElement, "createdAt"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var cr)) created = cr.UtcDateTime.Date;
+        }
+        catch { }
+        var list = new List<MonthUsage>();
+        for (var m = new DateTime(today.Year, today.Month, 1); m >= first; m = m.AddMonths(-1))
+        {
+            if (created is DateTime cd && cd >= m.AddMonths(1)) break;   // пользователя ещё не было
+            var bytes = usage.Value.days.Where(x => x.Day >= m && x.Day < m.AddMonths(1)).Sum(x => x.Bytes);
+            list.Add(new MonthUsage(m, bytes, m.Year == today.Year && m.Month == today.Month));
+        }
+        // старые месяцы без трафика в конце списка — скорее всего, панель их уже не хранит (или ещё не пользовались)
+        while (list.Count > 1 && list[^1].Bytes == 0) list.RemoveAt(list.Count - 1);
+        lock (_lock) _usageCache[key] = (DateTime.Now, list);
+        return list;
+    }
+
+    async Task ShowTrafficAsync(string chat, string key)
+    {
+        var subs = SubsOf(chat).Where(u => key == "*" || Key(u) == key).ToList();
+        if (subs.Count == 0) { _tg.Send(chat, "Подписка не найдена.", ChatKeyboard(chat)); return; }
+        var today = Api.Now.UtcDateTime.Date;
+        var sb = new StringBuilder();
+        var totals = new Dictionary<DateTime, double>();
+        bool any = false;
+        foreach (var u in subs)
+        {
+            List<MonthUsage>? months = null;
+            try { months = await MonthlyUsageAsync(u, 6); } catch (Exception ex) { Log.Write("трафик по месяцам: " + ex.Message); }
+            sb.AppendLine($"📈 Трафик «{u.Username}»");
+            if (months == null) { sb.AppendLine("нет данных — панель не отдаёт статистику"); sb.AppendLine(); continue; }
+            any = true;
+            foreach (var m in months)
+            {
+                sb.AppendLine($"{MonthName(m.Month)}{(m.Partial ? $" (по {today:dd.MM})" : "")} — {J.Bytes(m.Bytes)}");
+                totals[m.Month] = totals.GetValueOrDefault(m.Month) + m.Bytes;
+            }
+            var full = months.Where(m => !m.Partial && m.Bytes > 0).ToList();
+            if (full.Count >= 2) sb.AppendLine($"В среднем: {J.Bytes(full.Average(m => m.Bytes))} в месяц");
+            sb.AppendLine();
+        }
+        if (subs.Count > 1 && any && totals.Count > 0)
+        {
+            sb.AppendLine("Σ Всего по подпискам");
+            foreach (var t in totals.OrderByDescending(k => k.Key))
+                sb.AppendLine($"{MonthName(t.Key)}{(t.Key.Year == today.Year && t.Key.Month == today.Month ? $" (по {today:dd.MM})" : "")} — {J.Bytes(t.Value)}");
+        }
+        if (subs.Count > 1 && any) sb.AppendLine();
+        sb.Append("Считается по календарным месяцам.");
+        _tg.Send(chat, sb.ToString().TrimEnd(), ChatKeyboard(chat));
     }
 
     // ---- оплата переводом: тариф → «я оплатил» (+ скриншот) → админ подтверждает → подписка продлевается ----
