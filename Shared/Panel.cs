@@ -61,6 +61,17 @@ public record NodeRow(
 }
 public record Snapshot(List<UserRow> Users, List<NodeRow> Nodes, DateTime At);
 
+// Трафик нод по дням — вкладка «Статистика»
+public record NodeSeries(string Uuid, string Name, string Country, double[] Daily)
+{
+    public double Total => Daily.Sum();
+}
+public record NodeStats(List<DateTime> Days, List<NodeSeries> Series)
+{
+    public double[] DayTotals => Enumerable.Range(0, Days.Count).Select(i => Series.Sum(x => x.Daily[i])).ToArray();
+    public double Total => Series.Sum(x => x.Total);
+}
+
 public class Api
 {
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -348,6 +359,48 @@ public class Api
         static (List<DayUsage>, List<NodeUsage>) Result(Dictionary<DateTime, double> dm, Dictionary<string, (string country, double bytes)> nm) =>
             (dm.OrderBy(k => k.Key).Select(k => new DayUsage(k.Key, k.Value)).ToList(),
              nm.Where(k => k.Value.bytes > 0).OrderByDescending(k => k.Value.bytes).Select(k => new NodeUsage(k.Key, k.Value.country, k.Value.bytes)).ToList());
+    }
+
+    // Трафик по нодам и дням за последние days дней (вкладка «Статистика»).
+    // Панель 3.x: /api/bandwidth-stats/nodes?start&end&topNodesLimit -> categories (даты) + series (по ноде, data по дням).
+    // null — у панели нет такого API или у токена нет прав.
+    public async Task<NodeStats?> GetNodesStatsAsync(IPanelConfig s, int days)
+    {
+        var end = Now.UtcDateTime.Date;
+        var start = end.AddDays(-(days - 1));
+        var json = await GetOptionalAsync(s, $"/api/bandwidth-stats/nodes?start={start:yyyy-MM-dd}&end={end:yyyy-MM-dd}&topNodesLimit=50");
+        if (json == "") return null;
+        using var d = JsonDocument.Parse(json);
+        if (J.P(d.RootElement, "response") is not JsonElement r || !r.TryGetProperty("series", out var series) || series.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var cats = new List<DateTime?>();
+        if (r.TryGetProperty("categories", out var c) && c.ValueKind == JsonValueKind.Array)
+            foreach (var x in c.EnumerateArray())
+                cats.Add(DateTime.TryParse(x.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var t) ? t.Date : (DateTime?)null);
+
+        var list = new List<NodeSeries>();
+        foreach (var sr in series.EnumerateArray())
+        {
+            var daily = new double[days];
+            if (sr.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+            {
+                int i = 0;
+                foreach (var v in data.EnumerateArray())
+                {
+                    if (i < cats.Count && cats[i] is DateTime day && v.ValueKind == JsonValueKind.Number)
+                    {
+                        int k = (day - start).Days;
+                        if (k >= 0 && k < days) daily[k] += v.GetDouble();
+                    }
+                    i++;
+                }
+            }
+            list.Add(new NodeSeries(J.S(sr, "uuid"), J.S(sr, "name"), J.S(sr, "countryCode"), daily));
+        }
+        var days_ = Enumerable.Range(0, days).Select(i => start.AddDays(i)).ToList();
+        return new NodeStats(days_, list.Where(x => x.Total > 0).OrderByDescending(x => x.Total).ToList());
     }
 
     public static async Task<string> FetchMetricsAsync(string url, string user, string pass)

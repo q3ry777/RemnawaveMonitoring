@@ -100,6 +100,7 @@ public partial class App : Application
         _win.OpenUserRequested = OpenUser;
         _win.DemoChanged = () => { UpdateCards(); _journal?.Refresh(); };
         _win.PaymentsOpened = () => _ = RefreshPayments();
+        _win.StatsRequested = days => _ = RefreshStats(days);
         _payTimer.Tick += async (_, _) => await RefreshPayments();
         _payTimer.Start();
         _win.SetPaymentsEnabled(PaymentsOn);
@@ -340,6 +341,24 @@ public partial class App : Application
     PaymentsReport? _payments;
 
     bool PaymentsOn => _s.TgApiEnabled && _s.TgApiHost != "" && _s.TgApiKey != "";
+
+    // Вкладка «Статистика»: трафик нод по дням. Берётся при открытии вкладки, смене периода и по кнопке «обновить».
+    int _statsReq;
+
+    async Task RefreshStats(int days)
+    {
+        int req = ++_statsReq;   // ответ на устаревший запрос (период уже сменили) отбрасывается
+        try
+        {
+            var st = await _api.GetNodesStatsAsync(_s, days);
+            if (req != _statsReq) return;
+            _win.UpdateStats(st, st == null ? "панель не отдала статистику по нодам: нужна панель 3.x и токен с правом чтения статистики трафика" : "");
+        }
+        catch (Exception ex)
+        {
+            if (req == _statsReq) _win.UpdateStats(null, "не удалось загрузить статистику: " + ex.Message);
+        }
+    }
 
     async Task RefreshPayments()
     {
