@@ -15,6 +15,7 @@ public static class Program
     public static async Task<int> Main()
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("ru-RU");
+        CheckHost.Logger = Log.Write;
         var cfg = BotConfig.Load();
         Log.Write($"Remnawave bot {Bot.Version} · панель {cfg.BaseUrl} · часовой пояс {TimeZoneInfo.Local.Id}");
         var problems = cfg.Problems();

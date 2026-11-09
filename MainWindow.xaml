@@ -238,7 +238,13 @@
 
                     <!-- Ноды -->
                     <Grid x:Name="NodesPanel" Visibility="Collapsed">
-                        <ListBox x:Name="NodesGrid" PreviewMouseRightButtonUp="List_RightClick" Style="{StaticResource Rows}" Margin="0,4,0,0">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <DockPanel Margin="22,12,22,4">
+                            <Button DockPanel.Dock="Left" Margin="0" Content="проверить из РФ" Style="{StaticResource Btn}" Click="RuCheckAll_Click"
+                                    ToolTip="check-host.net: доступность адреса и портов нод с российских точек (проверяет не этот компьютер)"/>
+                            <TextBlock x:Name="RuCheckStatus" Margin="14,0,0,0" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}"/>
+                        </DockPanel>
+                        <ListBox x:Name="NodesGrid" Grid.Row="1" PreviewMouseRightButtonUp="List_RightClick" Style="{StaticResource Rows}" Margin="0,4,0,0">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Border Style="{StaticResource Row}" Padding="22,14,30,14">

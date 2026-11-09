@@ -19,6 +19,7 @@ public partial class App : Application
 {
     readonly Settings _s = Settings.Load();
     readonly Api _api = new();
+    readonly CheckHost _check = new();
     readonly DispatcherTimer _timer = new();
     readonly Icon _ok = MakeIcon(Color.FromArgb(74, 222, 128));
     readonly Icon _bad = MakeIcon(Color.FromArgb(251, 73, 52));
@@ -101,6 +102,7 @@ public partial class App : Application
         _win.DemoChanged = () => { UpdateCards(); _journal?.Refresh(); };
         _win.PaymentsOpened = () => _ = RefreshPayments();
         _win.StatsRequested = days => _ = RefreshStats(days);
+        _win.RuCheckRequested = OpenRuCheck;
         _payTimer.Tick += async (_, _) => await RefreshPayments();
         _payTimer.Start();
         _win.SetPaymentsEnabled(PaymentsOn);
@@ -341,6 +343,19 @@ public partial class App : Application
     PaymentsReport? _payments;
 
     bool PaymentsOn => _s.TgApiEnabled && _s.TgApiHost != "" && _s.TgApiKey != "";
+
+    // Проверка доступности нод из РФ (check-host.net): одно окно, новая проверка заменяет прежнюю
+    RuCheckWindow? _ruWin;
+
+    void OpenRuCheck(List<NodeRow> nodes)
+    {
+        _ruWin?.Close();
+        var w = new RuCheckWindow(_api, _s, _check, nodes) { Owner = _win };
+        w.Done += text => _win.SetRuStatus(text);
+        w.Closed += (_, _) => { if (ReferenceEquals(_ruWin, w)) _ruWin = null; };
+        _ruWin = w;
+        w.Show();
+    }
 
     // Вкладка «Статистика»: трафик нод по дням. Берётся при открытии вкладки, смене периода и по кнопке «обновить».
     int _statsReq;

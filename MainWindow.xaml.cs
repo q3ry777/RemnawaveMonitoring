@@ -283,6 +283,7 @@ public partial class MainWindow : Window
                     });
                     break;
                 case NodeRow n:
+                    if (n.Address != "") Add("проверить из РФ", () => RuCheckRequested?.Invoke(new List<NodeRow> { n }));
                     Add("копировать имя", () => CopyText(n.Name, n.Name));
                     Add("копировать адрес ноды", () =>
                     {
@@ -339,6 +340,18 @@ public partial class MainWindow : Window
     }
 
     void Search_Changed(object sender, TextChangedEventArgs e) { _debounce.Stop(); _debounce.Start(); }
+    // Проверка доступности нод из РФ через check-host.net
+    public Action<List<NodeRow>>? RuCheckRequested;
+
+    void RuCheckAll_Click(object sender, RoutedEventArgs e)
+    {
+        var nodes = _snap?.Nodes.Where(n => n.Address != "").ToList();
+        if (nodes == null || nodes.Count == 0) { SetStatus("нет нод с адресом — дождитесь обновления данных"); return; }
+        RuCheckRequested?.Invoke(nodes);
+    }
+
+    public void SetRuStatus(string text) => RuCheckStatus.Text = text;
+
     void Refresh_Click(object sender, RoutedEventArgs e)
     {
         _refresh();

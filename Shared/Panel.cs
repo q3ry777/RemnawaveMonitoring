@@ -403,6 +403,24 @@ public class Api
         return new NodeStats(days_, list.Where(x => x.Total > 0).OrderByDescending(x => x.Total).ToList());
     }
 
+    // Порты активных inbound'ов каждой ноды (из профиля конфигурации): их проверяют снаружи. Ключ — uuid ноды.
+    public async Task<Dictionary<string, List<int>>> GetNodePortsAsync(IPanelConfig s)
+    {
+        var res = new Dictionary<string, List<int>>();
+        var raw = await GetOptionalAsync(s, "/api/nodes");
+        if (raw == "") return res;
+        using var doc = JsonDocument.Parse(raw);
+        foreach (var n in J.Items(doc.RootElement, "nodes"))
+        {
+            var ports = new List<int>();
+            if (J.P(n, "configProfile", "activeInbounds") is JsonElement ib && ib.ValueKind == JsonValueKind.Array)
+                foreach (var i in ib.EnumerateArray())
+                    if (J.N(i, "port") is var pt and > 0 and < 65536 && !ports.Contains((int)pt)) ports.Add((int)pt);
+            res[J.S(n, "uuid")] = ports;
+        }
+        return res;
+    }
+
     public static async Task<string> FetchMetricsAsync(string url, string user, string pass)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };

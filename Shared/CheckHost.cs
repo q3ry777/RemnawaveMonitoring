@@ -9,10 +9,15 @@ using System.Threading.Tasks;
 namespace RemnawaveMonitor;
 
 // Проверка TCP-доступности адреса с российских точек check-host.net (по запросу админа).
+// Общий код: бот на сервере (/check) и программа на ПК (кнопка «проверить из РФ» на вкладке «ноды»).
 public class CheckHost
 {
     static readonly string Base = (Environment.GetEnvironmentVariable("CHECKHOST_URL") is { Length: > 0 } u ? u : "https://check-host.net").TrimEnd('/');
     static readonly string[] Fallback = { "ru1.node.check-host.net", "ru2.node.check-host.net", "ru3.node.check-host.net", "ru4.node.check-host.net" };
+
+    // Бот пишет предупреждения в свой журнал, программа на ПК их не пишет
+    public static Action<string>? Logger;
+    static void Warn(string text) => Logger?.Invoke(text);
 
     readonly HttpClient _http;
     readonly SemaphoreSlim _one = new(1, 1);   // одна проверка за раз — у check-host лимиты
@@ -23,7 +28,7 @@ public class CheckHost
     {
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         _http.DefaultRequestHeaders.Add("Accept", "application/json");
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("remnawave-bot/1.0");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("remnawave-monitor/1.0");
     }
 
     public record Point(string Node, string City, bool Ok, double Ms, string Error);
@@ -45,7 +50,7 @@ public class CheckHost
                         list.Add(n.Name);
             if (list.Count > 0) { _ru = list; _ruAt = DateTime.Now; return list; }
         }
-        catch (Exception ex) { Log.Write("check-host: список точек: " + ex.Message); }
+        catch (Exception ex) { Warn("check-host: список точек: " + ex.Message); }
         return _ru ?? Fallback.ToList();
     }
 
@@ -96,7 +101,7 @@ public class CheckHost
                             points[n.Name] = new Point(n.Name, city, false, 0, err != "" ? err : "ошибка");
                     }
                 }
-                catch (Exception ex) { Log.Write("check-host: результат: " + ex.Message); }
+                catch (Exception ex) { Warn("check-host: результат: " + ex.Message); }
                 if (points.Count >= cities.Count) break;
             }
             var list = cities.Keys.Select(k => points.TryGetValue(k, out var p) ? p : new Point(k, cities[k], false, -1, "нет ответа от точки"))
@@ -119,6 +124,19 @@ public class CheckHost
         ["Kaliningrad"] = "Калининград", ["Saratov"] = "Саратов", ["Tomsk"] = "Томск", ["Petropavlovsk-Kamchatsky"] = "Петропавловск-Камчатский",
     };
     static string Ru(string city) => Cities.TryGetValue(city.Trim(), out var r) ? r : city;
+
+    // Вывод по результатам: уровень (ok / warn / bad / none) и текст. panelConnected — видит ли ноду сама панель (null — неизвестно)
+    public static (string level, string text) Verdict(Result r, bool? panelConnected)
+    {
+        int ok = r.Points.Count(p => p.Ok);
+        int answered = r.Points.Count(p => p.Ms >= 0 || p.Ok);
+        if (answered == 0) return ("none", "Точки check-host не ответили — попробуйте позже.");
+        if (ok == answered) return ("ok", "Из России доступен.");
+        if (ok > 0) return ("warn", $"Доступен из {ok} из {answered} точек — частичная блокировка или проблемы у части провайдеров.");
+        return ("bad", panelConnected == true ? "Из России недоступен, а панель с нодой связана — похоже на блокировку IP."
+            : panelConnected == false ? "Недоступен, и панель тоже не видит ноду — скорее проблема с сервером."
+            : "Из России недоступен — блокировка, либо сервер/порт не отвечает.");
+    }
 
     public static string ErrorText(string e) =>
         e.Contains("timed out", StringComparison.OrdinalIgnoreCase) ? "таймаут" :
