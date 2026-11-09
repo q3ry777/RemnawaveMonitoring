@@ -52,6 +52,7 @@
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                         <RadioButton x:Name="UsersTab" Content="пользователи" IsChecked="True" Style="{StaticResource PillTab}" Checked="Tab_Checked"/>
                         <RadioButton x:Name="NodesTab" Content="ноды" Style="{StaticResource PillTab}" Checked="Tab_Checked"/>
+                        <RadioButton x:Name="StatsTab" Content="статистика" Style="{StaticResource PillTab}" Checked="Tab_Checked"/>
                         <RadioButton x:Name="PaymentsTab" Content="оплаты" Style="{StaticResource PillTab}" Checked="Tab_Checked" Visibility="Collapsed"/>
                     </StackPanel>
                     <Grid x:Name="SearchBox" DockPanel.Dock="Right" Width="250">
@@ -369,6 +370,45 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                    </Grid>
+
+                    <!-- Статистика: трафик по нодам и дням -->
+                    <Grid x:Name="StatsPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <DockPanel Margin="22,16,22,10">
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="ПЕРИОД" Style="{StaticResource Hdr}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <RadioButton Content="7 дн" Tag="7" IsChecked="True" Style="{StaticResource PillTab}" Checked="StatsPeriod_Checked"/>
+                                <RadioButton Content="14 дн" Tag="14" Style="{StaticResource PillTab}" Checked="StatsPeriod_Checked"/>
+                                <RadioButton Content="30 дн" Tag="30" Style="{StaticResource PillTab}" Checked="StatsPeriod_Checked"/>
+                            </StackPanel>
+                            <TextBlock x:Name="StatsRange" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}"/>
+                        </DockPanel>
+                        <Grid Grid.Row="1" Margin="22,0,22,12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="ВСЕГО ТРАФИКА" Style="{StaticResource Hdr}"/>
+                                <TextBlock x:Name="StatsTotal" Text="—" FontSize="26" FontWeight="Bold" Margin="0,4,0,8"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel Margin="0,0,32,0">
+                                        <TextBlock Text="Ø / ДЕНЬ" Style="{StaticResource Hdr}"/>
+                                        <TextBlock x:Name="StatsAvg" Text="—" FontWeight="Bold" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="ПИК" Style="{StaticResource Hdr}"/>
+                                        <TextBlock x:Name="StatsPeak" Text="—" FontWeight="Bold" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                            <ScrollViewer Grid.Column="1" Margin="20,0,0,0" MaxHeight="172" VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="StatsRank"/>
+                            </ScrollViewer>
+                        </Grid>
+                        <Grid Grid.Row="2" Margin="22,0,22,14">
+                            <Canvas x:Name="StatsChart" ClipToBounds="True" SizeChanged="StatsChart_SizeChanged"/>
+                            <TextBlock x:Name="StatsNote" Visibility="Collapsed" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Dim}" FontSize="12"/>
+                        </Grid>
                     </Grid>
 
                     <!-- Оплаты (из бота на сервере) -->

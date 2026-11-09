@@ -323,10 +323,13 @@ public partial class MainWindow : Window
 
     void Tab_Checked(object sender, RoutedEventArgs e)
     {
-        if (UsersPanel == null || NodesPanel == null || PaymentsPanel == null || SearchBox == null || UsersFilters == null) return;
+        if (UsersPanel == null || NodesPanel == null || PaymentsPanel == null || StatsPanel == null || SearchBox == null || UsersFilters == null) return;
         bool users = UsersTab.IsChecked == true;
         bool nodes = NodesTab.IsChecked == true;
         bool pays = PaymentsTab.IsChecked == true;
+        bool stats = StatsTab.IsChecked == true;
+        StatsPanel.Visibility = stats ? Visibility.Visible : Visibility.Collapsed;
+        if (stats) StatsRequested?.Invoke(_statsDays);
         UsersPanel.Visibility = users ? Visibility.Visible : Visibility.Collapsed;
         NodesPanel.Visibility = nodes ? Visibility.Visible : Visibility.Collapsed;
         PaymentsPanel.Visibility = pays ? Visibility.Visible : Visibility.Collapsed;
@@ -336,7 +339,11 @@ public partial class MainWindow : Window
     }
 
     void Search_Changed(object sender, TextChangedEventArgs e) { _debounce.Stop(); _debounce.Start(); }
-    void Refresh_Click(object sender, RoutedEventArgs e) => _refresh();
+    void Refresh_Click(object sender, RoutedEventArgs e)
+    {
+        _refresh();
+        if (StatsTab.IsChecked == true) StatsRequested?.Invoke(_statsDays);
+    }
     void Settings_Click(object sender, RoutedEventArgs e) => _openSettings();
 
     // ---- режим демонстрации ----
