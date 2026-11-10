@@ -18,7 +18,7 @@ public static class BotSetup
         bool UsersEvents, bool PanelEvents, string Observers, bool Cabinet, bool Reminders, int RemindDays, int RemindTraffic,
         bool Webhook, string WebhookSecret,
         bool Pay, string PayPlans, string PayDetails, string WriteToken,
-        bool Api, string ApiKey, int ApiPort, int RuCheckMin = 0);
+        bool Api, string ApiKey, int ApiPort, int RuCheckMin = 0, bool Status = false, int StatusDelayMin = 10, string StatusNames = "");
 
     // «1 150» / «3 400» по строке → «1:150,3:400». error — что не так
     public static string ParsePlans(string text, out string error)
@@ -37,6 +37,25 @@ public static class BotSetup
         }
         if (parts.Count == 0 && error == "") error = "добавьте хотя бы один тариф, например «1 150»";
         return string.Join(",", parts);
+    }
+
+    // «Aeza_SWE = Швеция №1» по строке → «Aeza_SWE=Швеция №1;…» («-» вместо названия — не показывать ноду). error — что не так
+    public static string ParseStatusNames(string text, out string error)
+    {
+        error = "";
+        var parts = new List<string>();
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line == "" || line.StartsWith('#')) continue;
+            var kv = line.Split('=', 2);
+            var name = kv[0].Trim();
+            var pub = kv.Length > 1 ? kv[1].Trim() : "";
+            if (name == "" || pub == "" || name.Contains(';') || pub.Contains(';'))
+            { error = $"«{line}»: нужно «имя ноды = название», например «Aeza_SWE = Швеция №1» (или «-» вместо названия, чтобы не показывать)"; continue; }
+            parts.Add($"{name}={pub.Replace("#", "№")}");   // «#» в .env начинает комментарий
+        }
+        return string.Join(";", parts);
     }
 
     public static readonly string[] Kinds = { "nodes", "limits", "billing", "updates", "users", "panel" };
@@ -97,6 +116,10 @@ public static class BotSetup
         env.AppendLine("NOTIFY_UPDATES=" + B(c.Updates));
         env.AppendLine("# автопроверка доступности нод из РФ (check-host.net): минут между проверками, 0 — выключена");
         env.AppendLine("CHECK_INTERVAL_MIN=" + c.RuCheckMin);
+        env.AppendLine("# статус сервиса для пользователей (кнопка в боте): включён, через сколько минут сбой появляется в статусе, названия нод «имя=название;имя=-»");
+        env.AppendLine("STATUS_ENABLED=" + B(c.Status));
+        env.AppendLine("STATUS_DELAY_MIN=" + c.StatusDelayMin);
+        env.AppendLine("STATUS_NAMES=" + c.StatusNames);
         env.AppendLine("# тихие часы: номера часов через запятую (23 = с 23:00 до 23:59), пусто — выключено");
         env.AppendLine("QUIET_HOURS=" + string.Join(",", c.QuietHours.OrderBy(h => h)));
         env.AppendLine("DND_TIME=" + c.DndTime);

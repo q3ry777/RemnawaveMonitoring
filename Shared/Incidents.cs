@@ -26,6 +26,7 @@ public class IncidentLog
     string FilePath => Path.Combine(_dir, "incidents.json");
     List<Incident> _items = new();
 
+    public List<Incident> All() => _items.ToList();   // копия: журнал можно читать, пока он меняется
     public int Unread => _items.Count(x => x.Unread);
     public int Active => _items.Count(x => x.End == null);
     public IEnumerable<string> ActiveKeys => _items.Where(x => x.End == null).Select(x => x.Key).Distinct().ToList();

@@ -33,7 +33,7 @@ public static class Program
     }
 }
 
-public class Bot
+public partial class Bot
 {
     public static string Version =>
         Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "?";
@@ -194,7 +194,7 @@ public class Bot
                 if (next == 2)
                 {
                     _log.Open(key, subject, alarm, severity, unread: true);
-                    Alert(kind, (severity == "warn" ? "🟡 " : "🔴 ") + alarm);
+                    Alert(kind, (severity == "warn" ? "🟡 " : "🔴 ") + alarm, key.EndsWith("|conn") ? HideButton(subject) : null);
                 }
             }
             _strikes[key] = next;
@@ -259,7 +259,7 @@ public class Bot
     }
 
     // Тревога админам: основным — если вид включён, дополнительным — если он в их списке. В тишину не уходит (видна в /problems)
-    void Alert(string kind, string text)
+    void Alert(string kind, string text, string? markup = null)
     {
         Log.Write($"[{kind}] {text}");
         var now = DateTime.Now;
@@ -268,7 +268,7 @@ public class Bot
         foreach (var chat in to)
         {
             if (SilentUntil(chat, now) is DateTime until) { Log.Write($"  {chat}: тихо до {When(until)} — не отправлено"); continue; }
-            _tg.Send(chat, text, AdminKeyboard(chat));
+            _tg.Send(chat, text, markup ?? AdminKeyboard(chat));
         }
     }
 
@@ -322,7 +322,7 @@ public class Bot
                 {
                     var text = RuWatch.Text(c);
                     _log.Open(key, c.Node.Name, text, c.To == "warn" ? "warn" : "bad", unread: true);
-                    Alert("nodes", (c.To == "warn" ? "🟡 " : "🔴 ") + text + "\nОтчёт: " + c.Result.Link);
+                    Alert("nodes", (c.To == "warn" ? "🟡 " : "🔴 ") + text + "\nОтчёт: " + c.Result.Link, HideButton(c.Node.Name));
                 }
             }
         }
@@ -577,7 +577,7 @@ public class Bot
     // ---- клавиатуры ----
     const string BtnMy = "👤 Мои подписки", BtnRemindOff = "🔕 Не напоминать", BtnRemindOn = "🔔 Напоминать",
                  BtnDnd = "🔕 Не беспокоить", BtnPay = "💳 Продлить подписку", BtnPayments = "💳 Оплаты",
-                 BtnBotUsers = "🤝 Бот у пользователей", BtnCheck = "🔎 Проверка из РФ", BtnSupport = "✉️ Написать администратору";
+                 BtnBotUsers = "🤝 Бот у пользователей", BtnCheck = "🔎 Проверка из РФ", BtnSupport = "✉️ Написать администратору", BtnService = "📡 Статус сервиса";
 
     static readonly (string text, string cmd)[] AdminButtons =
     {
@@ -601,6 +601,7 @@ public class Bot
     string UserKeyboard(string chat)
     {
         var rows = new List<string[]> { new[] { BtnMy } };
+        if (_cfg.StatusEnabled) rows.Add(new[] { BtnService });
         if (SubsOf(chat).Any(Payable)) rows.Add(new[] { BtnPay });
         rows.Add(new[] { BtnSupport });
         if (_cfg.UserReminders) rows.Add(new[] { _state.NoRemind.Contains(chat) ? BtnRemindOn : BtnRemindOff });
@@ -615,7 +616,7 @@ public class Bot
     const string AdminHelp =
         "Команды (или кнопки внизу):\n" +
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн и с каких IP\n/problems — активные проблемы\n" +
-        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота\n/check — доступность нод из России (check-host.net), /check IP:порт — любой адрес\n/broadcast текст — рассылка всем, кто подключил бота\n\nНа сообщения пользователей «📨» отвечайте ответом (reply) — бот перешлёт ответ.";
+        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота\n/check — доступность нод из России (check-host.net), /check IP:порт — любой адрес\n/svc — статус сервиса так, как его видят пользователи\n/hide — скрыть сбой ноды из статуса (ложная тревога, работы)\n/broadcast текст — рассылка всем, кто подключил бота\n\nНа сообщения пользователей «📨» отвечайте ответом (reply) — бот перешлёт ответ.";
 
     async Task OnMessageAsync(string chat, string raw, long messageId, bool media, string who, string replyTo)
     {
@@ -649,7 +650,7 @@ public class Bot
         {
             var t = Norm(raw);
             cmd = AdminButtons.FirstOrDefault(b => Norm(b.text) == t).cmd
-                  ?? (t == Norm(BtnRemindOff) || t == Norm(BtnRemindOn) ? "/remind" : t == Norm(BtnSupport) ? "/support" : "");
+                  ?? (t == Norm(BtnRemindOff) || t == Norm(BtnRemindOn) ? "/remind" : t == Norm(BtnSupport) ? "/support" : t == Norm(BtnService) ? "/svc" : "");
         }
 
         // админ, у которого есть свои подписки (его Telegram ID указан в панели), тоже считается подключившим бота
@@ -671,6 +672,8 @@ public class Bot
                 "/payments" => BuildPayments(),
                 "/botusers" => BuildBotUsers(),
                 "/check" => null,
+                "/svc" => BuildServiceStatus(true),
+                "/hide" => null,
                 "/broadcast" => null,
                 "" => "Не понял. Команды — кнопками внизу или /help.",
                 _ => "Не знаю такой команды.\n\n" + AdminHelp,
@@ -679,6 +682,7 @@ public class Bot
             if (cmd == "/pay") { StartPay(chat); return; }
             if (cmd == "/broadcast") { PrepareBroadcast(chat, arg); return; }
             if (cmd == "/check") { await StartCheckAsync(chat, arg); return; }
+            if (cmd == "/hide") { ShowHideMenu(chat); return; }
             if (cmd == "/payments" && PendingPayments().Count is var np and > 0)
             {   // заявки на проверке — кнопкой под сводкой (нижняя клавиатура остаётся прежней)
                 _tg.Send(chat, reply!, Telegram.Inline(new[] { ($"⏳ Показать заявки на проверке ({np})", "pend:") }));
@@ -703,6 +707,9 @@ public class Bot
                     _tg.Send(chat, off ? "🔕 Напоминания выключены. Включить — кнопкой внизу." : "🔔 Напоминания включены: напишу, когда подписка скоро истечёт или заканчивается трафик.", UserKeyboard(chat));
                 }
                 break;
+            case "/svc" when _cfg.StatusEnabled:
+                _tg.Send(chat, BuildServiceStatus(false), UserKeyboard(chat));
+                break;
             case "/pay":
                 StartPay(chat);
                 break;
@@ -716,7 +723,8 @@ public class Bot
             case "/start":
             case "/help":
                 _tg.Send(chat, "Здравствуйте! Здесь можно посмотреть свои подписки: срок, трафик, устройства и ссылку." +
-                               (_cfg.UserReminders && !_state.NoRemind.Contains(chat) ? "\nЯ напомню, когда подписка будет истекать или закончится трафик." : ""),
+                               (_cfg.UserReminders && !_state.NoRemind.Contains(chat) ? "\nЯ напомню, когда подписка будет истекать или закончится трафик." : "") +
+                               (_cfg.StatusEnabled ? "\nКнопка «Статус сервиса» покажет, всё ли работает." : ""),
                          UserKeyboard(chat));
                 await ShowMyAsync(chat);
                 break;
@@ -901,6 +909,11 @@ public class Bot
             var pend = PendingPayments();
             await _tg.AnswerCallbackAsync(id, pend.Count == 0 ? "Заявок на проверке нет" : "");
             foreach (var p in pend) _tg.Send(chat, $"⏳ Заявка от {p.Created:dd.MM HH:mm}: " + PayInfo(p), PayButtons(p.Id));
+            return;
+        }
+        if (kind == "hid")
+        {
+            await HideCallbackAsync(chat, id, data);
             return;
         }
         if (kind == "traf")

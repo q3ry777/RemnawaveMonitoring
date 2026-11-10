@@ -141,6 +141,19 @@
                     <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
                                Text="Последние два вида приходят только через вебхуки панели (ниже)."/>
 
+                    <TextBlock Text="СТАТУС СЕРВИСА ДЛЯ ПОЛЬЗОВАТЕЛЕЙ" Style="{StaticResource Field}" Margin="0,20,0,4"/>
+                    <CheckBox x:Name="TgStatusBox" Style="{StaticResource Check}" Margin="0,6,0,0"
+                              Content="кнопка «Статус сервиса» в боте (видят только пользователи с Telegram ID в панели)"/>
+                    <StackPanel Orientation="Horizontal" Margin="28,8,0,0">
+                        <TextBlock Text="показывать сбой не раньше чем через, мин" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="0,0,8,0"/>
+                        <TextBox x:Name="TgStatusDelayBox" Style="{StaticResource Input}" Width="60"/>
+                    </StackPanel>
+                    <TextBlock Text="НАЗВАНИЯ НОД В СТАТУСЕ (по строке: имя ноды в панели = название)" Style="{StaticResource Field}" Margin="0,12,0,6"/>
+                    <TextBox x:Name="TgStatusNamesBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="70"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Пример: Aeza_SWE = Швеция №1. Минус вместо названия — не показывать ноду. Без правила название «Страна #N». Пользователям ничего не рассылается — статус виден только по кнопке. «Недоступна из РФ» берётся из автопроверки (включите её). Сбой можно скрыть из статуса кнопкой под тревогой в Telegram или командой /hide."/>
+
                     <CheckBox x:Name="TgWebhookBox" Style="{StaticResource Check}" Margin="0,20,0,0"
                               Content="вебхуки панели — события приходят сразу"/>
                     <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"

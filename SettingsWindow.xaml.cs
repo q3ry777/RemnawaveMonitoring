@@ -44,6 +44,9 @@ public partial class SettingsWindow : Window
         TgRemindTrafficBox.Text = s.TgRemindTraffic.ToString();
         ToastsBox.IsChecked = s.ToastsEnabled;
         TgRuCheckBox.Text = s.TgRuCheckMin.ToString();
+        TgStatusBox.IsChecked = s.TgStatusEnabled;
+        TgStatusDelayBox.Text = s.TgStatusDelayMin.ToString();
+        TgStatusNamesBox.Text = s.TgStatusNames.Replace("\n", "\r\n");
         RuCheckBox.Text = s.RuCheckMin.ToString();
         TgPayBox.IsChecked = s.TgPayEnabled;
         TgPlansBox.Text = s.TgPayPlans.Replace("\n", "\r\n");
@@ -113,6 +116,9 @@ public partial class SettingsWindow : Window
         _s.TgRemindTraffic = RemindTraffic();
         _s.ToastsEnabled = ToastsBox.IsChecked == true;
         _s.TgRuCheckMin = RuMin(TgRuCheckBox.Text, _s.TgRuCheckMin);
+        _s.TgStatusEnabled = TgStatusBox.IsChecked == true;
+        _s.TgStatusDelayMin = StatusDelay();
+        _s.TgStatusNames = TgStatusNamesBox.Text.Replace("\r\n", "\n").Trim();
         _s.RuCheckMin = RuMin(RuCheckBox.Text, _s.RuCheckMin);
         _s.TgPayEnabled = TgPayBox.IsChecked == true;
         _s.TgPayPlans = TgPlansBox.Text.Replace("\r\n", "\n").Trim();
@@ -178,6 +184,8 @@ public partial class SettingsWindow : Window
     static int RuMin(string text, int def) =>
         int.TryParse(text.Trim(), out var v) && v >= 0 ? (v == 0 ? 0 : Math.Min(Math.Max(v, 10), 1440)) : def;
 
+    int StatusDelay() => int.TryParse(TgStatusDelayBox.Text.Trim(), out var d) && d is >= 0 and <= 1440 ? d : 10;
+
     int RemindDays() => int.TryParse(TgRemindDaysBox.Text.Trim(), out var d) && d is >= 1 and <= 30 ? d : 3;
     int RemindTraffic() => int.TryParse(TgRemindTrafficBox.Text.Trim().TrimEnd('%'), out var p) && p is >= 50 and <= 99 ? p : 90;
 
@@ -196,6 +204,8 @@ public partial class SettingsWindow : Window
         var plans = BotSetup.ParsePlans(TgPlansBox.Text.Replace("\r\n", "\n"), out var planErr);
         if (TgPayBox.IsChecked == true && planErr != "") { TgResultText("Тарифы: " + planErr, "Red"); return; }
         if (TgPayBox.IsChecked == true && TgPayDetailsBox.Text.Trim() == "") { TgResultText("Укажите реквизиты для перевода.", "Red"); return; }
+        var statusNames = BotSetup.ParseStatusNames(TgStatusNamesBox.Text.Replace("\r\n", "\n"), out var namesErr);
+        if (namesErr != "") { TgResultText("Названия нод в статусе: " + namesErr, "Red"); return; }
         if (TgApiBox.IsChecked == true && _s.TgApiKey == "") { _s.TgApiKey = BotSetup.NewSecret(); _s.Save(); }   // ключ вкладки «оплаты»
         if (_s.TgWebhookSecret == "") { _s.TgWebhookSecret = BotSetup.NewSecret(); _s.Save(); }   // секрет вебхуков сразу сохраняется
         var cfg = new BotSetup.Config(api, token, chat,
@@ -206,7 +216,8 @@ public partial class SettingsWindow : Window
             TgCabinetBox.IsChecked == true, TgRemindBox.IsChecked == true, RemindDays(), RemindTraffic(),
             TgWebhookBox.IsChecked == true, _s.TgWebhookSecret,
             TgPayBox.IsChecked == true, plans, TgPayDetailsBox.Text.Replace("\r\n", "\n").Trim(), TgWriteTokenBox.Password.Trim(),
-            TgApiBox.IsChecked == true, _s.TgApiKey, ApiPort(), RuMin(TgRuCheckBox.Text, 60));
+            TgApiBox.IsChecked == true, _s.TgApiKey, ApiPort(), RuMin(TgRuCheckBox.Text, 60),
+            TgStatusBox.IsChecked == true, StatusDelay(), statusNames);
         try
         {
             Clipboard.SetText(BotSetup.Command(cfg));

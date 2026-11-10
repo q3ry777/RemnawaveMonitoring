@@ -38,6 +38,10 @@ public class BotConfig : IPanelConfig
     public int CheckPort { get; init; } = 443;
     // Автопроверка доступности нод из РФ: минут между проверками (0 — выключена; не чаще раза в 10 минут)
     public int CheckIntervalMin { get; init; }
+    // Статус сервиса для пользователей (кнопка в боте): включён, через сколько минут сбой появляется в статусе, названия нод «имя → название» («-» — не показывать)
+    public bool StatusEnabled { get; init; }
+    public int StatusDelayMin { get; init; } = 10;
+    public Dictionary<string, string> StatusNames { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     // Оплата переводом с подтверждением админом: тарифы (месяцев, цена), реквизиты, токен с правом продления
     public bool PayEnabled { get; init; }
     public List<(int months, int price)> PayPlans { get; init; } = new();
@@ -97,6 +101,9 @@ public class BotConfig : IPanelConfig
             WebhookPort = Int("WEBHOOK_PORT", 8080, 1),
             CheckPort = Int("CHECK_PORT", 443, 1),
             CheckIntervalMin = checkMin == 0 ? 0 : Math.Min(Math.Max(checkMin, 10), 1440),
+            StatusEnabled = Flag("STATUS_ENABLED", false),
+            StatusDelayMin = Math.Min(Int("STATUS_DELAY_MIN", 10, 0), 1440),
+            StatusNames = ParseNames(Env("STATUS_NAMES")),
             PayEnabled = Flag("PAY_ENABLED", false),
             PayPlans = ParsePlans(Env("PAY_PLANS", "1:150,3:400,6:750,12:1400")),
             PayDetails = Env("PAY_DETAILS").Replace("\\n", "\n"),
@@ -125,6 +132,18 @@ public class BotConfig : IPanelConfig
                 ? kv[1].Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim().ToLowerInvariant()).Where(Kinds.Contains).ToHashSet()
                 : new HashSet<string>();
             map[id] = kinds.Count > 0 ? kinds : Kinds.ToHashSet();
+        }
+        return map;
+    }
+
+    // «Aeza_SWE=Швеция №1;Hostoff_NL=-» (имя ноды в панели = название для пользователей; «-» — не показывать)
+    static Dictionary<string, string> ParseNames(string text)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var part in text.Split(new[] { ';', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length == 2 && kv[0].Trim() != "" && kv[1].Trim() != "") map[kv[0].Trim()] = kv[1].Trim();
         }
         return map;
     }
@@ -182,6 +201,7 @@ public class BotState
     public Dictionary<string, DateTime> Strangers { get; set; } = new();   // посторонние, о которых уже сообщили (не чаще раза в сутки)   // чат → заявка, к которой ждём скриншот
     public List<string> Alerted { get; set; } = new();     // уже отправленные тревоги по пользователям (лимит, подписка)
     public bool Seeded { get; set; }                         // первый снимок уже был — дальше всё новое считается событием
+    public List<StatusHide> StatusHides { get; set; } = new();           // скрытые админом из статуса сервиса сбои нод (окна времени)
     public Dictionary<string, string> RuCheck { get; set; } = new();   // автопроверка из РФ: нода → последний подтверждённый уровень (ok / warn / bad)
     public string? LatestNode { get; set; }
     public string? LatestBackend { get; set; }
@@ -207,6 +227,14 @@ public class BotState
         }
         catch (Exception ex) { Log.Write("не удалось сохранить состояние: " + ex.Message); }
     }
+}
+
+// Окно скрытия ноды из статуса: сбои ноды, пересекающиеся с [From, Until], пользователям не показываются
+public class StatusHide
+{
+    public string Node { get; set; } = "";
+    public DateTime From { get; set; }
+    public DateTime Until { get; set; }
 }
 
 // Заявка на оплату: пользователь выбрал тариф → «я оплатил» → админ подтверждает → подписка продлевается

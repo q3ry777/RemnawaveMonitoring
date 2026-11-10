@@ -50,6 +50,9 @@ public class Settings : IPanelConfig
     public string? TgTokenEnc { get; set; }
     public string TgChatId { get; set; } = "";
     public bool TgNodes { get; set; } = true;
+    public bool TgStatusEnabled { get; set; }            // кнопка «Статус сервиса» у пользователей бота
+    public int TgStatusDelayMin { get; set; } = 10;     // сбой появляется в статусе не раньше чем через столько минут
+    public string TgStatusNames { get; set; } = "";      // «имя ноды = название для пользователей» по строке; «-» — не показывать
     public int TgRuCheckMin { get; set; } = 60;         // автопроверка нод из РФ в боте: минут между проверками, 0 — выключена
     public bool TgLimits { get; set; } = true;
     public bool TgBilling { get; set; } = true;
