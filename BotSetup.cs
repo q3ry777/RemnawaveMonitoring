@@ -18,7 +18,7 @@ public static class BotSetup
         bool UsersEvents, bool PanelEvents, string Observers, bool Cabinet, bool Reminders, int RemindDays, int RemindTraffic,
         bool Webhook, string WebhookSecret,
         bool Pay, string PayPlans, string PayDetails, string WriteToken,
-        bool Api, string ApiKey, int ApiPort);
+        bool Api, string ApiKey, int ApiPort, int RuCheckMin = 0);
 
     // «1 150» / «3 400» по строке → «1:150,3:400». error — что не так
     public static string ParsePlans(string text, out string error)
@@ -95,6 +95,8 @@ public static class BotSetup
         env.AppendLine("NOTIFY_LIMITS=" + B(c.Limits));
         env.AppendLine("NOTIFY_BILLING=" + B(c.Billing));
         env.AppendLine("NOTIFY_UPDATES=" + B(c.Updates));
+        env.AppendLine("# автопроверка доступности нод из РФ (check-host.net): минут между проверками, 0 — выключена");
+        env.AppendLine("CHECK_INTERVAL_MIN=" + c.RuCheckMin);
         env.AppendLine("# тихие часы: номера часов через запятую (23 = с 23:00 до 23:59), пусто — выключено");
         env.AppendLine("QUIET_HOURS=" + string.Join(",", c.QuietHours.OrderBy(h => h)));
         env.AppendLine("DND_TIME=" + c.DndTime);

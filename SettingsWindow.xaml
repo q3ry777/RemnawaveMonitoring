@@ -127,6 +127,10 @@
                     </Grid>
                     <TextBlock Text="ЧТО ПРИСЫЛАТЬ" Style="{StaticResource Field}" Margin="0,20,0,4"/>
                     <CheckBox x:Name="TgNodesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="нода не в сети / снова в сети"/>
+                    <StackPanel Orientation="Horizontal" Margin="28,8,0,0">
+                        <TextBlock Text="проверять доступность нод из РФ каждые, мин (0 — выкл.)" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="0,0,8,0"/>
+                        <TextBox x:Name="TgRuCheckBox" Style="{StaticResource Input}" Width="60"/>
+                    </StackPanel>
                     <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="лимиты трафика и подписки пользователей"/>
                     <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="оплата серверов"/>
                     <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="новые версии панели и нод"/>
@@ -268,6 +272,13 @@
                               Content="запускать вместе с Windows (свёрнуто в трей)"/>
                     <CheckBox x:Name="ToastsBox" Style="{StaticResource Check}" Margin="0,12,0,0"
                               Content="уведомления Windows нового вида: остаются в центре уведомлений, с кнопками «журнал» и «карточка»"/>
+                    <TextBlock Text="АВТОПРОВЕРКА ИЗ РФ" Style="{StaticResource Hdr}" Margin="0,22,0,8"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="проверять ноды из РФ каждые, мин (0 — выкл.)" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="0,0,8,0"/>
+                        <TextBox x:Name="RuCheckBox" Style="{StaticResource Input}" Width="60"/>
+                    </StackPanel>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Не чаще раза в 10 минут. Проверяет check-host.net (а не этот компьютер): до двух портов каждой ноды. Тревога — если нода стала недоступна из РФ или доступна лишь частично; смена подтверждается повторной проверкой."/>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

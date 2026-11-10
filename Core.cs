@@ -50,6 +50,7 @@ public class Settings : IPanelConfig
     public string? TgTokenEnc { get; set; }
     public string TgChatId { get; set; } = "";
     public bool TgNodes { get; set; } = true;
+    public int TgRuCheckMin { get; set; } = 60;         // автопроверка нод из РФ в боте: минут между проверками, 0 — выключена
     public bool TgLimits { get; set; } = true;
     public bool TgBilling { get; set; } = true;
     public bool TgUpdates { get; set; } = true;
@@ -81,6 +82,7 @@ public class Settings : IPanelConfig
 
     // Программа: уведомления Windows нового вида и «что нового» после обновления
     public bool ToastsEnabled { get; set; } = true;
+    public int RuCheckMin { get; set; } = 60;             // автопроверка нод из РФ (check-host) в программе: минут между проверками, 0 — выключена
     public bool DemoMode { get; set; }                    // режим демонстрации: скрыты имена пользователей и IP
     public string? LastChangelog { get; set; }
 

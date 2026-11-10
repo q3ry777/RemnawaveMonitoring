@@ -44,6 +44,7 @@ public class Bot
     readonly BotApi _apiServer;
     readonly Api _api = new();
     readonly CheckHost _check = new();
+    readonly RuWatch _ru;
     readonly BotState _state;
     readonly IncidentLog _log;
     readonly Dictionary<string, int> _strikes = new();
@@ -61,6 +62,7 @@ public class Bot
     public Bot(BotConfig cfg)
     {
         _cfg = cfg;
+        _ru = new RuWatch(_check);
         _tg = new Telegram(cfg) { OnMessage = OnMessageAsync, OnCallback = OnCallbackAsync };
         _wh = new Webhook(cfg) { OnEvent = OnWebhookAsync };
         _apiServer = new BotApi(cfg) { Payments = PaymentsReport };
@@ -91,6 +93,7 @@ public class Bot
         var ipl = Task.Run(() => IpsLoopAsync(ct), ct);
         var wh = Task.Run(() => _wh.RunAsync(ct), ct);
         var api = Task.Run(() => _apiServer.RunAsync(ct), ct);
+        var ru = Task.Run(() => RuCheckLoopAsync(ct), ct);
         while (!ct.IsCancellationRequested)
         {
             try { await Task.Delay(TimeSpan.FromSeconds(_cfg.IntervalSec), ct); }
@@ -126,7 +129,7 @@ public class Bot
                         $"{node.Name}: {node.BillingText}", "", "billing");
                 }
                 // ноды, которых больше нет в панели, — закрываем их проблемы без сообщений
-                foreach (var key in _strikes.Keys.Where(k => snap.Nodes.All(x => x.Name + "|conn" != k && x.Name + "|bill" != k)).ToList())
+                foreach (var key in _strikes.Keys.Where(k => snap.Nodes.All(x => x.Name + "|conn" != k && x.Name + "|bill" != k && x.Name + "|ru" != k)).ToList())
                 {
                     _log.Resolve(key);
                     _strikes.Remove(key);
@@ -267,6 +270,63 @@ public class Bot
             if (SilentUntil(chat, now) is DateTime until) { Log.Write($"  {chat}: тихо до {When(until)} — не отправлено"); continue; }
             _tg.Send(chat, text, AdminKeyboard(chat));
         }
+    }
+
+    // ---- автопроверка доступности нод из РФ (check-host.net), интервал — CHECK_INTERVAL_MIN ----
+    async Task RuCheckLoopAsync(CancellationToken ct)
+    {
+        if (_cfg.CheckIntervalMin <= 0) return;
+        Log.Write($"автопроверка нод из РФ: каждые {_cfg.CheckIntervalMin} мин");
+        try { await Task.Delay(TimeSpan.FromMinutes(2), ct); }   // первые данные панели и ничего лишнего сразу после запуска
+        catch (OperationCanceledException) { return; }
+        while (!ct.IsCancellationRequested)
+        {
+            try { await RuCheckOnceAsync(ct); }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) { Log.Write("автопроверка из РФ: " + ex.Message); }
+            try { await Task.Delay(TimeSpan.FromMinutes(_cfg.CheckIntervalMin), ct); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    async Task RuCheckOnceAsync(CancellationToken ct)
+    {
+        List<NodeRow> nodes;
+        Dictionary<string, string> state;
+        lock (_lock)
+        {
+            // ноды, которые панель уже считает отключёнными, не проверяем: по ним есть тревога «не в сети»
+            nodes = _snap?.Nodes.Where(n => n.Address != "" && n.Connected).ToList() ?? new();
+            state = new Dictionary<string, string>(_state.RuCheck);
+        }
+        if (nodes.Count == 0) return;
+        var ports = await NodePortsAsync();
+        var (_, changes) = await _ru.RunAsync(nodes, state, ports, 2, _cfg.CheckPort, ct);
+        lock (_lock)
+        {
+            // ноды, которых больше нет в панели, забываем
+            if (_snap != null)
+                foreach (var k in state.Keys.Where(k => _snap.Nodes.All(x => x.Name != k)).ToList())
+                {
+                    state.Remove(k);
+                    _log.Resolve(k + "|ru");
+                }
+            _state.RuCheck = state;
+            foreach (var c in changes)
+            {
+                var key = c.Node.Name + "|ru";
+                var down = _log.Resolve(key);
+                if (c.To == "ok")
+                    Alert("nodes", "🟢 " + RuWatch.Text(c) + (down is TimeSpan d ? $" (был недоступен {IncidentLog.Dur(d)})" : "") + "\nОтчёт: " + c.Result.Link);
+                else
+                {
+                    var text = RuWatch.Text(c);
+                    _log.Open(key, c.Node.Name, text, c.To == "warn" ? "warn" : "bad", unread: true);
+                    Alert("nodes", (c.To == "warn" ? "🟡 " : "🔴 ") + text + "\nОтчёт: " + c.Result.Link);
+                }
+            }
+        }
+        Save();
     }
 
     // ---- новые версии Remnawave (раз в 6 часов) ----

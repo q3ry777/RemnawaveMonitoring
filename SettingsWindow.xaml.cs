@@ -43,6 +43,8 @@ public partial class SettingsWindow : Window
         TgRemindDaysBox.Text = s.TgRemindDays.ToString();
         TgRemindTrafficBox.Text = s.TgRemindTraffic.ToString();
         ToastsBox.IsChecked = s.ToastsEnabled;
+        TgRuCheckBox.Text = s.TgRuCheckMin.ToString();
+        RuCheckBox.Text = s.RuCheckMin.ToString();
         TgPayBox.IsChecked = s.TgPayEnabled;
         TgPlansBox.Text = s.TgPayPlans.Replace("\n", "\r\n");
         TgPayDetailsBox.Text = s.TgPayDetails.Replace("\n", "\r\n");
@@ -110,6 +112,8 @@ public partial class SettingsWindow : Window
         _s.TgRemindDays = RemindDays();
         _s.TgRemindTraffic = RemindTraffic();
         _s.ToastsEnabled = ToastsBox.IsChecked == true;
+        _s.TgRuCheckMin = RuMin(TgRuCheckBox.Text, _s.TgRuCheckMin);
+        _s.RuCheckMin = RuMin(RuCheckBox.Text, _s.RuCheckMin);
         _s.TgPayEnabled = TgPayBox.IsChecked == true;
         _s.TgPayPlans = TgPlansBox.Text.Replace("\r\n", "\n").Trim();
         _s.TgPayDetails = TgPayDetailsBox.Text.Replace("\r\n", "\n").Trim();
@@ -170,6 +174,10 @@ public partial class SettingsWindow : Window
 
     int ApiPort() => int.TryParse(TgApiPortBox.Text.Trim(), out var p) && p is > 1024 and <= 65535 && p != 8080 ? p : 8090;
 
+    // 0 — выключено, иначе от 10 минут до суток; мусор в поле — прежнее значение
+    static int RuMin(string text, int def) =>
+        int.TryParse(text.Trim(), out var v) && v >= 0 ? (v == 0 ? 0 : Math.Min(Math.Max(v, 10), 1440)) : def;
+
     int RemindDays() => int.TryParse(TgRemindDaysBox.Text.Trim(), out var d) && d is >= 1 and <= 30 ? d : 3;
     int RemindTraffic() => int.TryParse(TgRemindTrafficBox.Text.Trim().TrimEnd('%'), out var p) && p is >= 50 and <= 99 ? p : 90;
 
@@ -198,7 +206,7 @@ public partial class SettingsWindow : Window
             TgCabinetBox.IsChecked == true, TgRemindBox.IsChecked == true, RemindDays(), RemindTraffic(),
             TgWebhookBox.IsChecked == true, _s.TgWebhookSecret,
             TgPayBox.IsChecked == true, plans, TgPayDetailsBox.Text.Replace("\r\n", "\n").Trim(), TgWriteTokenBox.Password.Trim(),
-            TgApiBox.IsChecked == true, _s.TgApiKey, ApiPort());
+            TgApiBox.IsChecked == true, _s.TgApiKey, ApiPort(), RuMin(TgRuCheckBox.Text, 60));
         try
         {
             Clipboard.SetText(BotSetup.Command(cfg));

@@ -164,6 +164,7 @@ public partial class App : Application
         Dispatcher.BeginInvoke(new Action(() => Changelog.ShowIfNew(_s, updated, _win)), DispatcherPriority.ApplicationIdle);
         _ = Refresh();
         _ = RefreshReleases();
+        _ = RuAutoLoopAsync();
         _ = CheckAppUpdateAsync();
     }
 
@@ -343,6 +344,68 @@ public partial class App : Application
     PaymentsReport? _payments;
 
     bool PaymentsOn => _s.TgApiEnabled && _s.TgApiHost != "" && _s.TgApiKey != "";
+
+    // Автопроверка доступности нод из РФ (check-host.net) по интервалу из настроек; 0 — выключена.
+    // Интервал читается на каждом шаге, поэтому перезапуск после смены настроек не нужен.
+    RuWatch? _ruWatch;
+    readonly Dictionary<string, string> _ruState = new();
+    bool _ruSeeded;
+
+    async Task RuAutoLoopAsync()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(90));   // сначала данные панели
+        var last = DateTime.MinValue;
+        while (true)
+        {
+            int min = _s.RuCheckMin;
+            if (min > 0 && DateTime.Now - last >= TimeSpan.FromMinutes(Math.Max(10, min)))
+            {
+                bool ran;
+                try { ran = await RuAutoOnceAsync(); }
+                catch (Exception ex) { ran = true; _win?.SetRuStatus("автопроверка из РФ: " + ex.Message); }
+                if (ran) last = DateTime.Now;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(30));
+        }
+    }
+
+    async Task<bool> RuAutoOnceAsync()
+    {
+        // ноды, которые панель уже считает отключёнными, не проверяем: по ним есть тревога «не в сети»
+        var nodes = _prev?.Nodes.Where(n => n.Address != "" && n.Connected).ToList();
+        if (nodes == null || nodes.Count == 0) return false;
+        _ruWatch ??= new RuWatch(_check);
+        var ports = new Dictionary<string, List<int>>();
+        try { ports = await _api.GetNodePortsAsync(_s); } catch { }
+        bool seed = !_ruSeeded;   // первая проверка после запуска: уже заблокированное — в журнал без тревоги
+        var (results, changes) = await _ruWatch.RunAsync(nodes, _ruState, ports, 2, 443, CancellationToken.None);
+        _ruSeeded = true;
+        foreach (var c in changes)
+        {
+            var key = c.Node.Name + "|ru";
+            bool muted = _s.IsMuted("node:" + c.Node.Name, "node");
+            var down = _log.Resolve(key);
+            if (c.To == "ok")
+            {
+                if (!muted) Balloon(RuWatch.Text(c) + (down is TimeSpan d ? $" (был недоступен {IncidentLog.Dur(d)})" : ""), Forms.ToolTipIcon.Info);
+            }
+            else
+            {
+                var text = RuWatch.Text(c);
+                _log.Open(key, c.Node.Name, text + (muted ? " (уведомления отключены)" : ""), c.To == "warn" ? "warn" : "bad", unread: !muted && !seed);
+                if (!muted && !seed) Balloon(text, Forms.ToolTipIcon.Warning, incident: true);
+            }
+        }
+        SyncJournalUi();
+        int judged = results.Count(r => r.Level != "none");
+        if (judged > 0)
+        {
+            var bad = results.Where(r => r.Level == "bad").Select(r => r.Node.Name).ToList();
+            _win?.SetRuStatus($"из РФ: {results.Count(r => r.Level == "ok")}/{judged} нод доступны · авто · {DateTime.Now:HH:mm}"
+                + (bad.Count > 0 ? " · недоступны: " + string.Join(", ", bad) : ""));
+        }
+        return true;
+    }
 
     // Проверка доступности нод из РФ (check-host.net): одно окно, новая проверка заменяет прежнюю
     RuCheckWindow? _ruWin;

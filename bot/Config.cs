@@ -36,6 +36,8 @@ public class BotConfig : IPanelConfig
     public int WebhookPort { get; init; } = 8080;
     // Проверка доступности из РФ (check-host.net): порт, если у ноды не удалось узнать порты инбаундов
     public int CheckPort { get; init; } = 443;
+    // Автопроверка доступности нод из РФ: минут между проверками (0 — выключена; не чаще раза в 10 минут)
+    public int CheckIntervalMin { get; init; }
     // Оплата переводом с подтверждением админом: тарифы (месяцев, цена), реквизиты, токен с правом продления
     public bool PayEnabled { get; init; }
     public List<(int months, int price)> PayPlans { get; init; } = new();
@@ -69,6 +71,7 @@ public class BotConfig : IPanelConfig
         if (TimeSpan.TryParseExact(Env("DND_TIME", "08:00").Replace('.', ':'), new[] { @"h\:mm", @"hh\:mm" }, CultureInfo.InvariantCulture, out var t)
             && t < TimeSpan.FromDays(1)) dnd = t;
 
+        var checkMin = Int("CHECK_INTERVAL_MIN", 0, 0);
         return new BotConfig
         {
             BaseUrl = Env("PANEL_URL", "http://remnawave:3000"),
@@ -93,6 +96,7 @@ public class BotConfig : IPanelConfig
             WebhookSecret = Env("WEBHOOK_SECRET"),
             WebhookPort = Int("WEBHOOK_PORT", 8080, 1),
             CheckPort = Int("CHECK_PORT", 443, 1),
+            CheckIntervalMin = checkMin == 0 ? 0 : Math.Min(Math.Max(checkMin, 10), 1440),
             PayEnabled = Flag("PAY_ENABLED", false),
             PayPlans = ParsePlans(Env("PAY_PLANS", "1:150,3:400,6:750,12:1400")),
             PayDetails = Env("PAY_DETAILS").Replace("\\n", "\n"),
@@ -178,6 +182,7 @@ public class BotState
     public Dictionary<string, DateTime> Strangers { get; set; } = new();   // посторонние, о которых уже сообщили (не чаще раза в сутки)   // чат → заявка, к которой ждём скриншот
     public List<string> Alerted { get; set; } = new();     // уже отправленные тревоги по пользователям (лимит, подписка)
     public bool Seeded { get; set; }                         // первый снимок уже был — дальше всё новое считается событием
+    public Dictionary<string, string> RuCheck { get; set; } = new();   // автопроверка из РФ: нода → последний подтверждённый уровень (ok / warn / bad)
     public string? LatestNode { get; set; }
     public string? LatestBackend { get; set; }
     public string Signature { get; set; } = "";
