@@ -94,13 +94,13 @@ public partial class Bot
 
             sb.AppendLine("Серверы:");
             foreach (var s in list)
-                sb.AppendLine($"{Tag(s)} — " + s.State switch
+                sb.AppendLine($"{Tag(s)} — " + (s.State switch
                 {
                     "ru" => $"🚫 недоступен из России ({Since(s.Since, now)})",
                     "down" => $"🔴 не работает ({Since(s.Since, now)})",
                     "warn" => $"🟡 перебои у части провайдеров ({Since(s.Since, now)})",
                     _ => "✅ работает",
-                });
+                }));
 
             // инциденты за 7 дней (только видимые ноды, не скрытые админом, не короче задержки показа)
             var delay = TimeSpan.FromMinutes(_cfg.StatusDelayMin);
