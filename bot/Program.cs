@@ -306,10 +306,10 @@ public class Bot
         {
             // ноды, которых больше нет в панели, забываем
             if (_snap != null)
-                foreach (var k in state.Keys.Where(k => _snap.Nodes.All(x => x.Name != k)).ToList())
+                foreach (var name in state.Keys.Where(nm => _snap.Nodes.All(x => x.Name != nm)).ToList())
                 {
-                    state.Remove(k);
-                    _log.Resolve(k + "|ru");
+                    state.Remove(name);
+                    _log.Resolve(name + "|ru");
                 }
             _state.RuCheck = state;
             foreach (var c in changes)
