@@ -20,6 +20,21 @@ public static class BotSetup
         bool Api, string ApiKey, int ApiPort);
 
 
+    // Секрет подписи вебхуков: 64 символа a-z, A-Z, 0-9 (требование панели)
+    public static string NewSecret()
+    {
+        const string abc = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        return new string(System.Security.Cryptography.RandomNumberGenerator.GetItems<char>(abc, 64));
+    }
+
+    // Часовой пояс для бота — как на этом компьютере (IANA, например Asia/Novosibirsk)
+    public static string TimeZone()
+    {
+        var id = TimeZoneInfo.Local.Id;
+        if (TimeZoneInfo.TryConvertWindowsIdToIanaId(id, out var iana)) return iana;
+        return id.Contains('/') ? id : "UTC";
+    }
+
     static string B(bool v) => v ? "true" : "false";
 
     public static string Command(Config c)
