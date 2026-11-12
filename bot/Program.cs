@@ -583,13 +583,14 @@ public partial class Bot
     {
         ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
         ("⚠️ Проблемы", "/problems"), ("ℹ️ Версии", "/version"), (BtnDnd, "/dnd"), (BtnMy, "/my"),
-        (BtnPay, "/pay"), (BtnPayments, "/payments"), (BtnBotUsers, "/botusers"), (BtnCheck, "/check"),
+        (BtnPay, "/pay"), (BtnPayments, "/payments"), (BtnBotUsers, "/botusers"), (BtnCheck, "/check"), (BtnService, "/svc"),
     };
 
     string AdminKeyboard(string chat)
     {
         var rows = new List<string[]> { new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" }, new[] { "⚠️ Проблемы", "ℹ️ Версии", BtnCheck } };
         var last = new List<string> { BtnDnd };
+        if (_cfg.StatusEnabled) last.Add(BtnService);
         if (_cfg.UserCabinet && SubsOf(chat).Count > 0) last.Add(BtnMy);
         if (_cfg.PayEnabled && _cfg.Chats.Contains(chat)) last.Add(BtnPayments);
         if ((_cfg.UserCabinet || _cfg.UserReminders) && _cfg.Chats.Contains(chat)) last.Add(BtnBotUsers);
@@ -683,6 +684,11 @@ public partial class Bot
             if (cmd == "/broadcast") { PrepareBroadcast(chat, arg); return; }
             if (cmd == "/check") { await StartCheckAsync(chat, arg); return; }
             if (cmd == "/hide") { ShowHideMenu(chat); return; }
+            if (cmd == "/svc" && _cfg.StatusEnabled)
+            {   // нижняя клавиатура остаётся прежней, под статусом — кнопка управления скрытием
+                _tg.Send(chat, reply!, Telegram.Inline(new[] { ("🙈 Скрыть сбой из статуса", "hidmenu:") }));
+                return;
+            }
             if (cmd == "/payments" && PendingPayments().Count is var np and > 0)
             {   // заявки на проверке — кнопкой под сводкой (нижняя клавиатура остаётся прежней)
                 _tg.Send(chat, reply!, Telegram.Inline(new[] { ($"⏳ Показать заявки на проверке ({np})", "pend:") }));
@@ -909,6 +915,12 @@ public partial class Bot
             var pend = PendingPayments();
             await _tg.AnswerCallbackAsync(id, pend.Count == 0 ? "Заявок на проверке нет" : "");
             foreach (var p in pend) _tg.Send(chat, $"⏳ Заявка от {p.Created:dd.MM HH:mm}: " + PayInfo(p), PayButtons(p.Id));
+            return;
+        }
+        if (kind == "hidmenu")
+        {
+            await _tg.AnswerCallbackAsync(id);
+            if (IsAdmin(chat)) ShowHideMenu(chat);
             return;
         }
         if (kind == "hid")
