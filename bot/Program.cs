@@ -17,6 +17,7 @@ public static class Program
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("ru-RU");
         CheckHost.Logger = Log.Write;
         var cfg = BotConfig.Load();
+        cfg.LoadSettings();
         Log.Write($"Remnawave bot {Bot.Version} · панель {cfg.BaseUrl} · часовой пояс {TimeZoneInfo.Local.Id}");
         var problems = cfg.Problems();
         if (problems.Count > 0)
@@ -275,16 +276,20 @@ public partial class Bot
     // ---- автопроверка доступности нод из РФ (check-host.net), интервал — CHECK_INTERVAL_MIN ----
     async Task RuCheckLoopAsync(CancellationToken ct)
     {
-        if (_cfg.CheckIntervalMin <= 0) return;
-        Log.Write($"автопроверка нод из РФ: каждые {_cfg.CheckIntervalMin} мин");
         try { await Task.Delay(TimeSpan.FromMinutes(2), ct); }   // первые данные панели и ничего лишнего сразу после запуска
         catch (OperationCanceledException) { return; }
+        var last = DateTime.MinValue;
         while (!ct.IsCancellationRequested)
         {
-            try { await RuCheckOnceAsync(ct); }
-            catch (OperationCanceledException) { return; }
-            catch (Exception ex) { Log.Write("автопроверка из РФ: " + ex.Message); }
-            try { await Task.Delay(TimeSpan.FromMinutes(_cfg.CheckIntervalMin), ct); }
+            int min = _cfg.CheckIntervalMin;   // меняется в боте (/settings) на лету
+            if (min > 0 && DateTime.Now - last >= TimeSpan.FromMinutes(min))
+            {
+                last = DateTime.Now;
+                try { await RuCheckOnceAsync(ct); }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex) { Log.Write("автопроверка из РФ: " + ex.Message); }
+            }
+            try { await Task.Delay(TimeSpan.FromSeconds(30), ct); }
             catch (OperationCanceledException) { return; }
         }
     }
@@ -577,13 +582,13 @@ public partial class Bot
     // ---- клавиатуры ----
     const string BtnMy = "👤 Мои подписки", BtnRemindOff = "🔕 Не напоминать", BtnRemindOn = "🔔 Напоминать",
                  BtnDnd = "🔕 Не беспокоить", BtnPay = "💳 Продлить подписку", BtnPayments = "💳 Оплаты",
-                 BtnBotUsers = "🤝 Бот у пользователей", BtnCheck = "🔎 Проверка из РФ", BtnSupport = "✉️ Написать администратору", BtnService = "📡 Статус сервиса";
+                 BtnBotUsers = "🤝 Бот у пользователей", BtnCheck = "🔎 Проверка из РФ", BtnSupport = "✉️ Написать администратору", BtnService = "📡 Статус сервиса", BtnSettings = "⚙️ Настройки";
 
     static readonly (string text, string cmd)[] AdminButtons =
     {
         ("📊 Сводка", "/status"), ("🖥 Ноды", "/nodes"), ("👥 Онлайн", "/users"),
         ("⚠️ Проблемы", "/problems"), ("ℹ️ Версии", "/version"), (BtnDnd, "/dnd"), (BtnMy, "/my"),
-        (BtnPay, "/pay"), (BtnPayments, "/payments"), (BtnBotUsers, "/botusers"), (BtnCheck, "/check"), (BtnService, "/svc"),
+        (BtnPay, "/pay"), (BtnPayments, "/payments"), (BtnBotUsers, "/botusers"), (BtnCheck, "/check"), (BtnService, "/svc"), (BtnSettings, "/settings"),
     };
 
     string AdminKeyboard(string chat)
@@ -591,10 +596,11 @@ public partial class Bot
         var rows = new List<string[]> { new[] { "📊 Сводка", "🖥 Ноды", "👥 Онлайн" }, new[] { "⚠️ Проблемы", "ℹ️ Версии", BtnCheck } };
         var last = new List<string> { BtnDnd };
         if (_cfg.StatusEnabled) last.Add(BtnService);
+        if (_cfg.Chats.Contains(chat)) last.Add(BtnSettings);
         if (_cfg.UserCabinet && SubsOf(chat).Count > 0) last.Add(BtnMy);
         if (_cfg.PayEnabled && _cfg.Chats.Contains(chat)) last.Add(BtnPayments);
         if ((_cfg.UserCabinet || _cfg.UserReminders) && _cfg.Chats.Contains(chat)) last.Add(BtnBotUsers);
-        if (last.Count > 3) { rows.Add(last.Take(2).ToArray()); rows.Add(last.Skip(2).ToArray()); }
+        if (last.Count > 3) { int half = (last.Count + 1) / 2; rows.Add(last.Take(half).ToArray()); rows.Add(last.Skip(half).ToArray()); }
         else rows.Add(last.ToArray());
         return Telegram.Keyboard(rows.ToArray());
     }
@@ -617,7 +623,7 @@ public partial class Bot
     const string AdminHelp =
         "Команды (или кнопки внизу):\n" +
         "/status — сводка\n/nodes — подробности по нодам\n/users — кто онлайн и с каких IP\n/problems — активные проблемы\n" +
-        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота\n/check — доступность нод из России (check-host.net), /check IP:порт — любой адрес\n/svc — статус сервиса так, как его видят пользователи\n/hide — скрыть сбой ноды из статуса (ложная тревога, работы)\n/broadcast текст — рассылка всем, кто подключил бота\n\nНа сообщения пользователей «📨» отвечайте ответом (reply) — бот перешлёт ответ.";
+        "/version — версии\n/dnd — не беспокоить до утра (повторно — выключить), /dnd 10:30 — до указанного времени\n/my — мои подписки\n/payments — оплаты\n/botusers — кто из пользователей подключил бота\n/check — доступность нод из России (check-host.net), /check IP:порт — любой адрес\n/settings — настройки бота (только главный админ)\n/svc — статус сервиса так, как его видят пользователи\n/hide — скрыть сбой ноды из статуса (ложная тревога, работы)\n/broadcast текст — рассылка всем, кто подключил бота\n\nНа сообщения пользователей «📨» отвечайте ответом (reply) — бот перешлёт ответ.";
 
     async Task OnMessageAsync(string chat, string raw, long messageId, bool media, string who, string replyTo)
     {
@@ -631,6 +637,8 @@ public partial class Bot
             AdminReply(chat, rm.Groups[1].Value, raw, messageId, media);
             return;
         }
+        // значение настройки, которое бот ждёт сообщением (/settings → «Изменить…»)
+        if (!media && _cfg.Chats.Contains(chat) && HandleSettingInput(chat, raw)) return;
         // скриншот перевода к заявке на оплату
         if (media && _cfg.PayEnabled)
         {
@@ -674,6 +682,7 @@ public partial class Bot
                 "/botusers" => BuildBotUsers(),
                 "/check" => null,
                 "/svc" => BuildServiceStatus(true),
+                "/settings" => _cfg.Chats.Contains(chat) ? null : "Настройки бота доступны только главному админу.",
                 "/hide" => null,
                 "/broadcast" => null,
                 "" => "Не понял. Команды — кнопками внизу или /help.",
@@ -684,6 +693,7 @@ public partial class Bot
             if (cmd == "/broadcast") { PrepareBroadcast(chat, arg); return; }
             if (cmd == "/check") { await StartCheckAsync(chat, arg); return; }
             if (cmd == "/hide") { ShowHideMenu(chat); return; }
+            if (cmd == "/settings" && _cfg.Chats.Contains(chat)) { ShowSettings(chat); return; }
             if (cmd == "/svc" && _cfg.StatusEnabled)
             {   // нижняя клавиатура остаётся прежней, под статусом — кнопка управления скрытием
                 _tg.Send(chat, reply!, Telegram.Inline(new[] { ("🙈 Скрыть сбой из статуса", "hidmenu:") }));
@@ -915,6 +925,11 @@ public partial class Bot
             var pend = PendingPayments();
             await _tg.AnswerCallbackAsync(id, pend.Count == 0 ? "Заявок на проверке нет" : "");
             foreach (var p in pend) _tg.Send(chat, $"⏳ Заявка от {p.Created:dd.MM HH:mm}: " + PayInfo(p), PayButtons(p.Id));
+            return;
+        }
+        if (kind == "set")
+        {
+            await SettingsCallbackAsync(chat, id, data, messageId);
             return;
         }
         if (kind == "hidmenu")

@@ -18,41 +18,41 @@ public class BotConfig : IPanelConfig
     public string Proxy { get; init; } = "";
     public string TelegramApi { get; init; } = "https://api.telegram.org";   // для своего Bot API сервера или тестов
     public int IntervalSec { get; init; } = 30;
-    public bool NotifyNodes { get; init; } = true;
-    public bool NotifyLimits { get; init; } = true;
-    public bool NotifyBilling { get; init; } = true;
-    public bool NotifyUpdates { get; init; } = true;
-    public bool NotifyUsers { get; init; } = true;      // события пользователей (вебхуки): создан, удалён, впервые подключился, новое устройство…
-    public bool NotifyPanel { get; init; } = true;      // входы в панель, перезапуск панели, API-токены (вебхуки)
+    public bool NotifyNodes { get; set; } = true;
+    public bool NotifyLimits { get; set; } = true;
+    public bool NotifyBilling { get; set; } = true;
+    public bool NotifyUpdates { get; set; } = true;
+    public bool NotifyUsers { get; set; } = true;      // события пользователей (вебхуки): создан, удалён, впервые подключился, новое устройство…
+    public bool NotifyPanel { get; set; } = true;      // входы в панель, перезапуск панели, API-токены (вебхуки)
     // Дополнительные админы: чат → что присылать (nodes, limits, billing, updates, users, panel)
-    public Dictionary<string, HashSet<string>> Observers { get; init; } = new();
+    public Dictionary<string, HashSet<string>> Observers { get; set; } = new();
     // Пользователи панели (по Telegram ID): личный кабинет и напоминания
-    public bool UserCabinet { get; init; } = true;
-    public bool UserReminders { get; init; } = true;
-    public int RemindDays { get; init; } = 3;
-    public int RemindTraffic { get; init; } = 90;
+    public bool UserCabinet { get; set; } = true;
+    public bool UserReminders { get; set; } = true;
+    public int RemindDays { get; set; } = 3;
+    public int RemindTraffic { get; set; } = 90;
     // Вебхуки панели: бот слушает http://remnawave-bot:{WebhookPort}/webhook, подпись — WEBHOOK_SECRET
     public string WebhookSecret { get; init; } = "";
     public int WebhookPort { get; init; } = 8080;
     // Проверка доступности из РФ (check-host.net): порт, если у ноды не удалось узнать порты инбаундов
     public int CheckPort { get; init; } = 443;
     // Автопроверка доступности нод из РФ: минут между проверками (0 — выключена; не чаще раза в 10 минут)
-    public int CheckIntervalMin { get; init; }
+    public int CheckIntervalMin { get; set; }
     // Статус сервиса для пользователей (кнопка в боте): включён, через сколько минут сбой появляется в статусе, названия нод «имя → название» («-» — не показывать)
-    public bool StatusEnabled { get; init; }
-    public int StatusDelayMin { get; init; } = 10;
-    public Dictionary<string, string> StatusNames { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    public bool StatusEnabled { get; set; }
+    public int StatusDelayMin { get; set; } = 10;
+    public Dictionary<string, string> StatusNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     // Оплата переводом с подтверждением админом: тарифы (месяцев, цена), реквизиты, токен с правом продления
-    public bool PayEnabled { get; init; }
-    public List<(int months, int price)> PayPlans { get; init; } = new();
-    public string PayDetails { get; init; } = "";
+    public bool PayEnabled { get; set; }
+    public List<(int months, int price)> PayPlans { get; set; } = new();
+    public string PayDetails { get; set; } = "";
     public string Currency { get; init; } = "₽";
     public string WriteToken { get; init; } = "";
     // API для программы на ПК (вкладка «оплаты»)
     public string ApiKey { get; init; } = "";
     public int ApiPort { get; init; } = 8090;
-    public HashSet<int> QuietHours { get; init; } = new();
-    public TimeSpan DndTime { get; init; } = TimeSpan.FromHours(8);
+    public HashSet<int> QuietHours { get; set; } = new();
+    public TimeSpan DndTime { get; set; } = TimeSpan.FromHours(8);
     public string DataDir { get; init; } = "/data";
 
     static string Env(string name, string def = "") => (Environment.GetEnvironmentVariable(name) ?? def).Trim();
@@ -115,6 +115,63 @@ public class BotConfig : IPanelConfig
             DndTime = dnd,
             DataDir = Env("DATA_DIR", "/data"),
         };
+    }
+
+    // ---- настройки, которые меняются в боте (/settings) и хранятся в {DataDir}/settings.json ----
+    // При первом запуске файл создаётся из .env (перенос прежних значений), дальше значения из .env для этих настроек не читаются.
+    string SettingsPath => Path.Combine(DataDir, "settings.json");
+
+    public BotSettings ToSettings() => new()
+    {
+        NotifyNodes = NotifyNodes, NotifyLimits = NotifyLimits, NotifyBilling = NotifyBilling, NotifyUpdates = NotifyUpdates,
+        NotifyUsers = NotifyUsers, NotifyPanel = NotifyPanel,
+        Observers = string.Join(";", Observers.Select(kv => kv.Key + ":" + string.Join(",", kv.Value))),
+        UserCabinet = UserCabinet, UserReminders = UserReminders, RemindDays = RemindDays, RemindTraffic = RemindTraffic,
+        CheckIntervalMin = CheckIntervalMin, StatusEnabled = StatusEnabled, StatusDelayMin = StatusDelayMin,
+        StatusNames = string.Join(";", StatusNames.Select(kv => kv.Key + "=" + kv.Value)),
+        PayEnabled = PayEnabled, PayPlans = string.Join(",", PayPlans.Select(x => $"{x.months}:{x.price}")), PayDetails = PayDetails,
+        QuietHours = QuietHours.OrderBy(h => h).ToList(), DndTime = DndTime.ToString(@"hh\:mm"),
+    };
+
+    public void Apply(BotSettings s)
+    {
+        NotifyNodes = s.NotifyNodes; NotifyLimits = s.NotifyLimits; NotifyBilling = s.NotifyBilling; NotifyUpdates = s.NotifyUpdates;
+        NotifyUsers = s.NotifyUsers; NotifyPanel = s.NotifyPanel;
+        Observers = ParseObservers(s.Observers);
+        UserCabinet = s.UserCabinet; UserReminders = s.UserReminders; RemindDays = s.RemindDays; RemindTraffic = s.RemindTraffic;
+        CheckIntervalMin = s.CheckIntervalMin; StatusEnabled = s.StatusEnabled; StatusDelayMin = s.StatusDelayMin;
+        StatusNames = ParseNames(s.StatusNames);
+        PayEnabled = s.PayEnabled; PayPlans = ParsePlans(s.PayPlans); PayDetails = s.PayDetails;
+        QuietHours = s.QuietHours.Where(h => h is >= 0 and < 24).ToHashSet();
+        if (TimeSpan.TryParseExact(s.DndTime, @"hh\:mm", CultureInfo.InvariantCulture, out var t) && t < TimeSpan.FromDays(1)) DndTime = t;
+    }
+
+    // Файл есть — настройки из него; нет — создаётся из значений .env
+    public void LoadSettings()
+    {
+        try
+        {
+            if (File.Exists(SettingsPath))
+            {
+                var s = JsonSerializer.Deserialize<BotSettings>(File.ReadAllText(SettingsPath));
+                if (s != null) { Apply(s); Log.Write("настройки: загружены из settings.json"); return; }
+            }
+            SaveSettings();
+            Log.Write("настройки: settings.json создан из .env — дальше они меняются в боте (/settings)");
+        }
+        catch (Exception ex) { Log.Write("настройки: не удалось прочитать settings.json, работаю по .env: " + ex.Message); }
+    }
+
+    public void SaveSettings()
+    {
+        try
+        {
+            Directory.CreateDirectory(DataDir);
+            var tmp = SettingsPath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(ToSettings(), new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+            File.Move(tmp, SettingsPath, true);
+        }
+        catch (Exception ex) { Log.Write("настройки: не удалось сохранить settings.json: " + ex.Message); }
     }
 
     public static readonly string[] Kinds = { "nodes", "limits", "billing", "updates", "users", "panel" };
@@ -227,6 +284,31 @@ public class BotState
         }
         catch (Exception ex) { Log.Write("не удалось сохранить состояние: " + ex.Message); }
     }
+}
+
+// Содержимое settings.json: то, что настраивается в боте. Списки хранятся в тех же текстовых форматах, что были в .env
+public class BotSettings
+{
+    public bool NotifyNodes { get; set; } = true;
+    public bool NotifyLimits { get; set; } = true;
+    public bool NotifyBilling { get; set; } = true;
+    public bool NotifyUpdates { get; set; } = true;
+    public bool NotifyUsers { get; set; } = true;
+    public bool NotifyPanel { get; set; } = true;
+    public string Observers { get; set; } = "";      // «123:nodes,billing;456:nodes»
+    public bool UserCabinet { get; set; } = true;
+    public bool UserReminders { get; set; } = true;
+    public int RemindDays { get; set; } = 3;
+    public int RemindTraffic { get; set; } = 90;
+    public int CheckIntervalMin { get; set; }
+    public bool StatusEnabled { get; set; }
+    public int StatusDelayMin { get; set; } = 10;
+    public string StatusNames { get; set; } = "";    // «Aeza_SWE=Швеция №1;Hostoff_NL=-»
+    public bool PayEnabled { get; set; }
+    public string PayPlans { get; set; } = "";       // «1:150,3:400»
+    public string PayDetails { get; set; } = "";
+    public List<int> QuietHours { get; set; } = new();
+    public string DndTime { get; set; } = "08:00";
 }
 
 // Окно скрытия ноды из статуса: сбои ноды, пересекающиеся с [From, Until], пользователям не показываются
