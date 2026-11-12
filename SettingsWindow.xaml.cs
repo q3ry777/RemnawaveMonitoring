@@ -12,7 +12,6 @@ namespace RemnawaveMonitor;
 public partial class SettingsWindow : Window
 {
     readonly Settings _s;
-    readonly ToggleButton[] _hours = new ToggleButton[24];
 
     public SettingsWindow(Settings s)
     {
@@ -29,41 +28,13 @@ public partial class SettingsWindow : Window
         // telegram
         TgTokenBox.Password = s.TgToken;
         TgChatBox.Text = s.TgChatId;
-        TgNodesBox.IsChecked = s.TgNodes;
-        TgLimitsBox.IsChecked = s.TgLimits;
-        TgBillingBox.IsChecked = s.TgBilling;
-        TgUpdatesBox.IsChecked = s.TgUpdates;
-        TgDndTimeBox.Text = s.TgDndTime;
-        TgUsersEvBox.IsChecked = s.TgUsersEvents;
-        TgPanelEvBox.IsChecked = s.TgPanelEvents;
         TgWebhookBox.IsChecked = s.TgWebhook;
-        TgObserversBox.Text = s.TgObservers.Replace("\n", "\r\n");
-        TgCabinetBox.IsChecked = s.TgCabinet;
-        TgRemindBox.IsChecked = s.TgReminders;
-        TgRemindDaysBox.Text = s.TgRemindDays.ToString();
-        TgRemindTrafficBox.Text = s.TgRemindTraffic.ToString();
         ToastsBox.IsChecked = s.ToastsEnabled;
-        TgRuCheckBox.Text = s.TgRuCheckMin.ToString();
-        TgStatusBox.IsChecked = s.TgStatusEnabled;
-        TgStatusDelayBox.Text = s.TgStatusDelayMin.ToString();
-        TgStatusNamesBox.Text = s.TgStatusNames.Replace("\n", "\r\n");
         RuCheckBox.Text = s.RuCheckMin.ToString();
-        TgPayBox.IsChecked = s.TgPayEnabled;
-        TgPlansBox.Text = s.TgPayPlans.Replace("\n", "\r\n");
-        TgPayDetailsBox.Text = s.TgPayDetails.Replace("\n", "\r\n");
         TgWriteTokenBox.Password = s.TgWriteToken;
         TgApiBox.IsChecked = s.TgApiEnabled;
         TgApiHostBox.Text = s.TgApiHost != "" ? s.TgApiHost : Uri.TryCreate(s.BaseUrl, UriKind.Absolute, out var pu) ? pu.Host : "";
         TgApiPortBox.Text = s.TgApiPort.ToString();
-        for (int h = 0; h < 24; h++)
-        {
-            var b = new ToggleButton { Content = h.ToString("00"), Style = (Style)FindResource("HourToggle"), IsChecked = s.TgQuietHours.Contains(h) };
-            b.Click += (_, _) => UpdateQuietHint();
-            _hours[h] = b;
-            QuietGrid.Children.Add(b);
-        }
-        TgQuietBox.IsChecked = s.TgQuietEnabled;
-        UpdateQuietHint();
 
         // обновления и метрики
         UpdVerText.Text = $"Новые версии из релизов приватного репозитория GitHub. Сейчас установлена версия {Updater.CurrentText}.";
@@ -101,74 +72,18 @@ public partial class SettingsWindow : Window
         _s.UpdateToken = UpdateTokenBox.Password.Trim();
         _s.TgToken = TgTokenBox.Password.Trim();
         _s.TgChatId = TgChatBox.Text.Trim();
-        _s.TgNodes = TgNodesBox.IsChecked == true;
-        _s.TgLimits = TgLimitsBox.IsChecked == true;
-        _s.TgBilling = TgBillingBox.IsChecked == true;
-        _s.TgUpdates = TgUpdatesBox.IsChecked == true;
-        if (Settings.TryParseTime(TgDndTimeBox.Text, out var dnd)) _s.TgDndTime = dnd.ToString(@"hh\:mm");
-        _s.TgUsersEvents = TgUsersEvBox.IsChecked == true;
-        _s.TgPanelEvents = TgPanelEvBox.IsChecked == true;
         _s.TgWebhook = TgWebhookBox.IsChecked == true;
-        _s.TgObservers = TgObserversBox.Text.Replace("\r\n", "\n").Trim();
-        _s.TgCabinet = TgCabinetBox.IsChecked == true;
-        _s.TgReminders = TgRemindBox.IsChecked == true;
-        _s.TgRemindDays = RemindDays();
-        _s.TgRemindTraffic = RemindTraffic();
         _s.ToastsEnabled = ToastsBox.IsChecked == true;
-        _s.TgRuCheckMin = RuMin(TgRuCheckBox.Text, _s.TgRuCheckMin);
-        _s.TgStatusEnabled = TgStatusBox.IsChecked == true;
-        _s.TgStatusDelayMin = StatusDelay();
-        _s.TgStatusNames = TgStatusNamesBox.Text.Replace("\r\n", "\n").Trim();
         _s.RuCheckMin = RuMin(RuCheckBox.Text, _s.RuCheckMin);
-        _s.TgPayEnabled = TgPayBox.IsChecked == true;
-        _s.TgPayPlans = TgPlansBox.Text.Replace("\r\n", "\n").Trim();
-        _s.TgPayDetails = TgPayDetailsBox.Text.Replace("\r\n", "\n").Trim();
         _s.TgWriteToken = TgWriteTokenBox.Password.Trim();
         _s.TgApiEnabled = TgApiBox.IsChecked == true;
         _s.TgApiHost = TgApiHostBox.Text.Trim();
         _s.TgApiPort = ApiPort();
-        _s.TgQuietHours = SelectedHours();
-        _s.TgQuietEnabled = TgQuietBox.IsChecked == true && _s.TgQuietHours.Count > 0;
         _s.Theme = LightRb.IsChecked == true ? "light" : "dark";
         try { AutoRun.Set(AutoBox.IsChecked == true); }
         catch (Exception ex) { MessageBox.Show("Автозапуск: " + ex.Message); }
         App.ApplyTheme(_s.Theme);
         DialogResult = true;
-    }
-
-    // ---- тихие часы ----
-    List<int> SelectedHours() => Enumerable.Range(0, 24).Where(h => _hours[h]?.IsChecked == true).ToList();
-
-    void TgQuiet_Click(object sender, RoutedEventArgs e) => UpdateQuietHint();
-
-    void QuietNight_Click(object sender, RoutedEventArgs e)
-    {
-        for (int h = 0; h < 24; h++) _hours[h].IsChecked = h >= 23 || h < 8;
-        UpdateQuietHint();
-    }
-
-    void QuietClear_Click(object sender, RoutedEventArgs e)
-    {
-        foreach (var b in _hours) b.IsChecked = false;
-        UpdateQuietHint();
-    }
-
-    // Подсказка: какие часы выбраны (время — по часовому поясу сервера, он берётся с этого компьютера)
-    void UpdateQuietHint()
-    {
-        if (TgQuietHint == null || _hours[23] == null) return;
-        var sel = SelectedHours();
-        TgQuietHint.SetResourceReference(TextBlock.ForegroundProperty, "Dim");
-        if (sel.Count == 0)
-        {
-            TgQuietHint.Text = "Часы не выбраны. Нажмите на часы, когда уведомления не нужны, или «ночь 23–08».";
-            if (TgQuietBox.IsChecked == true) TgQuietHint.SetResourceReference(TextBlock.ForegroundProperty, "Red");
-            return;
-        }
-        var ranges = Settings.QuietRangesText(sel);
-        TgQuietHint.Text = TgQuietBox.IsChecked == true
-            ? $"Тихо каждый день: {ranges} (часовой пояс {BotSetup.TimeZone()}). Ответы на команды приходят всегда."
-            : $"Выбрано: {ranges}. Сейчас выключено.";
     }
 
     // ---- telegram-бот ----
@@ -184,10 +99,7 @@ public partial class SettingsWindow : Window
     static int RuMin(string text, int def) =>
         int.TryParse(text.Trim(), out var v) && v >= 0 ? (v == 0 ? 0 : Math.Min(Math.Max(v, 10), 1440)) : def;
 
-    int StatusDelay() => int.TryParse(TgStatusDelayBox.Text.Trim(), out var d) && d is >= 0 and <= 1440 ? d : 10;
 
-    int RemindDays() => int.TryParse(TgRemindDaysBox.Text.Trim(), out var d) && d is >= 1 and <= 30 ? d : 3;
-    int RemindTraffic() => int.TryParse(TgRemindTrafficBox.Text.Trim().TrimEnd('%'), out var p) && p is >= 50 and <= 99 ? p : 90;
 
     void WhatsNew_Click(object sender, RoutedEventArgs e) => WhatsNew.Show(this, Changelog.Load().Take(6).ToList(), "что нового");
 
@@ -198,26 +110,12 @@ public partial class SettingsWindow : Window
         var api = Token.Password.Trim();
         if (token == "" || chat == "") { TgResultText("Нужны токен бота и ID чата.", "Red"); return; }
         if (api == "") { TgResultText("Нужен API-токен панели (раздел «панель»).", "Red"); return; }
-        if (!Settings.TryParseTime(TgDndTimeBox.Text, out var dnd)) { TgResultText("Время «не беспокоить» — в формате ЧЧ:ММ, например 08:00.", "Red"); return; }
-        var observers = BotSetup.ParseObservers(TgObserversBox.Text.Replace("\r\n", "\n"), out var obsErr);
-        if (obsErr != "") { TgResultText("Дополнительные админы: " + obsErr, "Red"); return; }
-        var plans = BotSetup.ParsePlans(TgPlansBox.Text.Replace("\r\n", "\n"), out var planErr);
-        if (TgPayBox.IsChecked == true && planErr != "") { TgResultText("Тарифы: " + planErr, "Red"); return; }
-        if (TgPayBox.IsChecked == true && TgPayDetailsBox.Text.Trim() == "") { TgResultText("Укажите реквизиты для перевода.", "Red"); return; }
-        var statusNames = BotSetup.ParseStatusNames(TgStatusNamesBox.Text.Replace("\r\n", "\n"), out var namesErr);
-        if (namesErr != "") { TgResultText("Названия нод в статусе: " + namesErr, "Red"); return; }
         if (TgApiBox.IsChecked == true && _s.TgApiKey == "") { _s.TgApiKey = BotSetup.NewSecret(); _s.Save(); }   // ключ вкладки «оплаты»
         if (_s.TgWebhookSecret == "") { _s.TgWebhookSecret = BotSetup.NewSecret(); _s.Save(); }   // секрет вебхуков сразу сохраняется
         var cfg = new BotSetup.Config(api, token, chat,
             int.TryParse(OnlineBox.Text, out var w) && w >= 30 ? w : 300,
-            TgNodesBox.IsChecked == true, TgLimitsBox.IsChecked == true, TgBillingBox.IsChecked == true, TgUpdatesBox.IsChecked == true,
-            TgQuietBox.IsChecked == true ? SelectedHours() : new List<int>(), dnd.ToString(@"hh\:mm"),
-            TgUsersEvBox.IsChecked == true, TgPanelEvBox.IsChecked == true, observers,
-            TgCabinetBox.IsChecked == true, TgRemindBox.IsChecked == true, RemindDays(), RemindTraffic(),
-            TgWebhookBox.IsChecked == true, _s.TgWebhookSecret,
-            TgPayBox.IsChecked == true, plans, TgPayDetailsBox.Text.Replace("\r\n", "\n").Trim(), TgWriteTokenBox.Password.Trim(),
-            TgApiBox.IsChecked == true, _s.TgApiKey, ApiPort(), RuMin(TgRuCheckBox.Text, 60),
-            TgStatusBox.IsChecked == true, StatusDelay(), statusNames);
+            TgWebhookBox.IsChecked == true, _s.TgWebhookSecret, TgWriteTokenBox.Password.Trim(),
+            TgApiBox.IsChecked == true, _s.TgApiKey, ApiPort());
         try
         {
             Clipboard.SetText(BotSetup.Command(cfg));

@@ -49,30 +49,9 @@ public class Settings : IPanelConfig
     [JsonIgnore] public string TgToken { get; set; } = "";
     public string? TgTokenEnc { get; set; }
     public string TgChatId { get; set; } = "";
-    public bool TgNodes { get; set; } = true;
-    public bool TgStatusEnabled { get; set; }            // кнопка «Статус сервиса» у пользователей бота
-    public int TgStatusDelayMin { get; set; } = 10;     // сбой появляется в статусе не раньше чем через столько минут
-    public string TgStatusNames { get; set; } = "";      // «имя ноды = название для пользователей» по строке; «-» — не показывать
-    public int TgRuCheckMin { get; set; } = 60;         // автопроверка нод из РФ в боте: минут между проверками, 0 — выключена
-    public bool TgLimits { get; set; } = true;
-    public bool TgBilling { get; set; } = true;
-    public bool TgUpdates { get; set; } = true;
-    public string TgDndTime { get; set; } = "08:00";            // кнопка «не беспокоить» в боте — до этого времени
-    public bool TgQuietEnabled { get; set; }
-    public List<int> TgQuietHours { get; set; } = new() { 23, 0, 1, 2, 3, 4, 5, 6, 7 };
-    public bool TgUsersEvents { get; set; } = true;     // события пользователей (вебхуки)
-    public bool TgPanelEvents { get; set; } = true;     // входы в панель и события панели (вебхуки)
-    public string TgObservers { get; set; } = "";       // доп. админы: «ID виды» по строке
-    public bool TgCabinet { get; set; } = true;         // личный кабинет пользователей
-    public bool TgReminders { get; set; } = true;       // напоминания пользователям
-    public int TgRemindDays { get; set; } = 3;
-    public int TgRemindTraffic { get; set; } = 90;
     public bool TgWebhook { get; set; } = true;         // вебхуки панели (команда установки настраивает панель)
     [JsonIgnore] public string TgWebhookSecret { get; set; } = "";
     // Оплата переводом с подтверждением: тарифы «месяцев цена» по строке, реквизиты, токен с правом продления
-    public bool TgPayEnabled { get; set; }
-    public string TgPayPlans { get; set; } = "1 150\n3 400\n6 750\n12 1400";
-    public string TgPayDetails { get; set; } = "";
     [JsonIgnore] public string TgWriteToken { get; set; } = "";
     // Вкладка «оплаты»: бот открывает порт на сервере, программа забирает заявки (запрос подписан, ответ зашифрован)
     public bool TgApiEnabled { get; set; }

@@ -116,7 +116,7 @@
                 <StackPanel Margin="30,24,30,20">
                     <TextBlock Text="telegram-бот" Style="{StaticResource PageTitle}"/>
                     <TextBlock Style="{StaticResource PageDesc}"
-                               Text="Бот работает на сервере с панелью (Docker, рядом с Remnawave) — круглосуточно, независимо от этого компьютера. Здесь задаются его настройки: кнопка внизу собирает команду установки. Программа на ПК в Telegram ничего не отправляет."/>
+                               Text="Бот работает на сервере с панелью (Docker, рядом с Remnawave) — круглосуточно, независимо от этого компьютера. Здесь только подключение: кнопка внизу собирает команду установки. Все остальные настройки (уведомления, тихие часы, автопроверка из РФ, статус сервиса, пользователи, оплата, доп. админы) меняются в самом боте: /settings, только главный админ. Программа на ПК в Telegram ничего не отправляет."/>
                     <TextBlock Text="ТОКЕН БОТА (от @BotFather; хранится зашифрованным)" Style="{StaticResource Field}"/>
                     <PasswordBox x:Name="TgTokenBox" Style="{StaticResource InputPwd}"/>
                     <TextBlock Text="ID ЧАТА (сначала напишите боту любое сообщение)" Style="{StaticResource Field}"/>
@@ -125,59 +125,15 @@
                         <TextBox x:Name="TgChatBox" Style="{StaticResource Input}"/>
                         <Button Grid.Column="1" Content="привязать чат" Style="{StaticResource Btn}" Click="TgBind_Click"/>
                     </Grid>
-                    <TextBlock Text="ЧТО ПРИСЫЛАТЬ" Style="{StaticResource Field}" Margin="0,20,0,4"/>
-                    <CheckBox x:Name="TgNodesBox" Style="{StaticResource Check}" Margin="0,6,0,0" Content="нода не в сети / снова в сети"/>
-                    <StackPanel Orientation="Horizontal" Margin="28,8,0,0">
-                        <TextBlock Text="проверять доступность нод из РФ каждые, мин (0 — выкл.)" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="0,0,8,0"/>
-                        <TextBox x:Name="TgRuCheckBox" Style="{StaticResource Input}" Width="60"/>
-                    </StackPanel>
-                    <CheckBox x:Name="TgLimitsBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="лимиты трафика и подписки пользователей"/>
-                    <CheckBox x:Name="TgBillingBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="оплата серверов"/>
-                    <CheckBox x:Name="TgUpdatesBox" Style="{StaticResource Check}" Margin="0,8,0,0" Content="новые версии панели и нод"/>
-                    <CheckBox x:Name="TgUsersEvBox" Style="{StaticResource Check}" Margin="0,8,0,0"
-                              Content="события пользователей: создан, удалён, впервые подключился, новое устройство, трафик закончился"/>
-                    <CheckBox x:Name="TgPanelEvBox" Style="{StaticResource Check}" Margin="0,8,0,0"
-                              Content="входы в панель (в том числе неудачные), перезапуск панели, API-токены"/>
-                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
-                               Text="Последние два вида приходят только через вебхуки панели (ниже)."/>
-
-                    <TextBlock Text="СТАТУС СЕРВИСА ДЛЯ ПОЛЬЗОВАТЕЛЕЙ" Style="{StaticResource Field}" Margin="0,20,0,4"/>
-                    <CheckBox x:Name="TgStatusBox" Style="{StaticResource Check}" Margin="0,6,0,0"
-                              Content="кнопка «Статус сервиса» в боте (видят только пользователи с Telegram ID в панели)"/>
-                    <StackPanel Orientation="Horizontal" Margin="28,8,0,0">
-                        <TextBlock Text="показывать сбой не раньше чем через, мин" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="0,0,8,0"/>
-                        <TextBox x:Name="TgStatusDelayBox" Style="{StaticResource Input}" Width="60"/>
-                    </StackPanel>
-                    <TextBlock Text="НАЗВАНИЯ НОД В СТАТУСЕ (по строке: имя ноды в панели = название)" Style="{StaticResource Field}" Margin="0,12,0,6"/>
-                    <TextBox x:Name="TgStatusNamesBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="70"
-                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
-                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
-                               Text="Пример: Aeza_SWE = Швеция №1. Минус вместо названия — не показывать ноду. Без правила название «Страна #N». Пользователям ничего не рассылается — статус виден только по кнопке. «Недоступна из РФ» берётся из автопроверки (включите её). Сбой можно скрыть из статуса кнопкой под тревогой в Telegram или командой /hide."/>
-
                     <CheckBox x:Name="TgWebhookBox" Style="{StaticResource Check}" Margin="0,20,0,0"
                               Content="вебхуки панели — события приходят сразу"/>
                     <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
                                Text="Команда установки сама впишет WEBHOOK_ENABLED, WEBHOOK_URL и WEBHOOK_SECRET_HEADER в /opt/remnawave/.env (с резервной копией .env.rw-bot-backup) и перезапустит панель — примерно 20 секунд. Если в панели уже есть свои вебхуки, адрес бота добавится к ним."/>
 
-                    <TextBlock Text="ДОПОЛНИТЕЛЬНЫЕ АДМИНЫ (по одному в строке: Telegram ID и что присылать)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
-                    <TextBox x:Name="TgObserversBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="70"
-                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
-                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
-                               Text="Виды через запятую: nodes — ноды, limits — лимиты и подписки, billing — оплата, updates — версии, users — события пользователей, panel — входы в панель. Без списка — всё. Пример: 123456789 nodes,billing. Им доступны те же команды на просмотр и своё «не беспокоить»."/>
-
-                    <TextBlock Text="ОПЛАТА ПЕРЕВОДОМ (подтверждаете вы, подписка продлевается сама)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
-                    <CheckBox x:Name="TgPayBox" Style="{StaticResource Check}"
-                              Content="принимать оплату в боте: «💳 Продлить» → тариф → реквизиты → «Я оплатил» → вы подтверждаете"/>
-                    <TextBlock Text="ТАРИФЫ (по строке: месяцев и цена, например «3 400»)" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="TgPlansBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="90" Width="220" HorizontalAlignment="Left"
-                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Top"/>
-                    <TextBlock Text="РЕКВИЗИТЫ ДЛЯ ПЕРЕВОДА (что увидит пользователь)" Style="{StaticResource Field}"/>
-                    <TextBox x:Name="TgPayDetailsBox" Style="{StaticResource Input}" AcceptsReturn="True" Height="70"
-                             VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" VerticalContentAlignment="Top"/>
                     <TextBlock Text="API-ТОКЕН С ПРАВОМ ИЗМЕНЯТЬ ПОЛЬЗОВАТЕЛЕЙ (пусто — основной; хранится зашифрованным)" Style="{StaticResource Field}"/>
                     <PasswordBox x:Name="TgWriteTokenBox" Style="{StaticResource InputPwd}"/>
                     <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
-                               Text="Продлевается только профиль с настоящим сроком: профили со сроком до 2099 года считаются бессрочными — у них нет кнопки «Продлить» и напоминаний о сроке. Если подписка ещё действует, продление добавляется к дате окончания, если истекла — считается от момента подтверждения. Заявки и сумма за месяц — кнопка «💳 Оплаты» в боте."/>
+                               Text="Нужен, чтобы подписка продлевалась сама после подтверждения оплаты. Включение оплаты, тарифы и реквизиты — в боте: /settings → «Оплата». Продлевается только профиль с настоящим сроком: профили со сроком до 2099 года считаются бессрочными."/>
 
                     <CheckBox x:Name="TgApiBox" Style="{StaticResource Check}" Margin="0,16,0,0"
                               Content="вкладка «оплаты» в программе: заявки и суммы по месяцам из бота"/>
@@ -190,34 +146,6 @@
                     <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
                                Text="Бот откроет этот порт на сервере (команда установки сама разрешит его в ufw и покажет IP). Запросы подписаны ключом, ответы зашифрованы — посторонние ничего не прочитают. Ключ создаётся автоматически и попадает в команду установки."/>
 
-                    <TextBlock Text="ПОЛЬЗОВАТЕЛИ ПАНЕЛИ (по Telegram ID, указанному в панели)" Style="{StaticResource Field}" Margin="0,22,0,6"/>
-                    <CheckBox x:Name="TgCabinetBox" Style="{StaticResource Check}"
-                              Content="личный кабинет: пользователь видит свои подписки — срок, трафик, устройства и ссылку"/>
-                    <CheckBox x:Name="TgRemindBox" Style="{StaticResource Check}" Margin="0,8,0,0"
-                              Content="напоминать пользователям об окончании подписки и трафика"/>
-                    <StackPanel Orientation="Horizontal" Margin="28,8,0,0">
-                        <TextBlock Text="за дней до конца" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="0,0,8,0"/>
-                        <TextBox x:Name="TgRemindDaysBox" Style="{StaticResource Input}" Width="60"/>
-                        <TextBlock Text="при трафике от, %" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Dim}" Margin="18,0,8,0"/>
-                        <TextBox x:Name="TgRemindTrafficBox" Style="{StaticResource Input}" Width="60"/>
-                    </StackPanel>
-                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
-                               Text="Один Telegram ID может стоять у нескольких пользователей — человек увидит все свои подписки по названиям. Писать первым бот может только тем, кто хоть раз нажал /start; сколько таких — видно в «Сводке» бота."/>
-
-                    <TextBlock Text="КНОПКА «НЕ БЕСПОКОИТЬ» В БОТЕ — ТИШИНА ДО" Style="{StaticResource Field}" Margin="0,22,0,6"/>
-                    <TextBox x:Name="TgDndTimeBox" Style="{StaticResource Input}" Width="90" HorizontalAlignment="Left"
-                             ToolTip="например 08:00; в боте можно указать и своё время: /dnd 10:30"/>
-
-                    <CheckBox x:Name="TgQuietBox" Style="{StaticResource Check}" Margin="0,20,0,0"
-                              Content="тихие часы по расписанию — каждый день" Click="TgQuiet_Click"/>
-                    <TextBlock Text="ЧАСЫ ТИШИНЫ (нажмите на час: 23 = с 23:00 до 23:59)" Style="{StaticResource Field}"/>
-                    <UniformGrid x:Name="QuietGrid" Rows="2" Columns="12" HorizontalAlignment="Left"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                        <Button Content="ночь 23–08" Style="{StaticResource Btn}" Margin="0,0,8,0" Click="QuietNight_Click"/>
-                        <Button Content="очистить" Style="{StaticResource Btn}" Margin="0" Click="QuietClear_Click"/>
-                    </StackPanel>
-                    <TextBlock x:Name="TgQuietHint" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource Dim}"/>
-
                     <WrapPanel Margin="0,18,0,0">
                         <Button Content="скопировать команду установки" Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Click="TgCopy_Click"/>
                         <Button Content="отправить тест" Style="{StaticResource Btn}" Margin="0,0,8,8" Click="TgTest_Click"/>
@@ -229,7 +157,7 @@
                             <Run Text="как поставить" FontWeight="Bold" Foreground="{DynamicResource Fg}"/><LineBreak/>
                             <Run Text="1. Заполните поля выше, нажмите «скопировать команду установки»."/><LineBreak/>
                             <Run Text="2. Выполните её на сервере с панелью под root. Дождитесь «RW-BOT: готово» — бот пришлёт приветствие с кнопками."/><LineBreak/>
-                            <Run Text="3. После изменения настроек — снова скопируйте и выполните команду: она перезапишет настройки и перезапустит бота."/><LineBreak/>
+                            <Run Text="3. Команду нужно выполнить снова только при смене токенов, адреса панели, вебхуков или API — она перезапустит бота. Остальное настраивается в боте: /settings."/><LineBreak/>
                             <Run Text="Обновление бота: cd /opt/remnawave-bot &amp;&amp; docker compose pull &amp;&amp; docker compose up -d"/><LineBreak/>
                             <Run Text="Журнал: docker logs -f remnawave-bot"/>
                         </TextBlock>
