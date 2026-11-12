@@ -6,7 +6,7 @@ using System.Text;
 namespace RemnawaveMonitor;
 
 // Статус сервиса для пользователей: кнопка «📡 Статус сервиса» у тех, чей Telegram ID указан в панели.
-// Показывает ноды под публичными названиями, «недоступна из РФ» — отдельным заметным блоком и инциденты за 7 дней.
+// Показывает ноды под публичными названиями и «недоступна из РФ» — отдельным заметным блоком.
 // Бот ничего не рассылает пользователям: оповещать о сбоях админ будет сам. Сбой можно скрыть из статуса
 // (ложная тревога, технические работы) — кнопкой под тревогой или командой /hide.
 public partial class Bot
@@ -101,31 +101,6 @@ public partial class Bot
                     "warn" => $"🟡 перебои у части провайдеров ({Since(s.Since, now)})",
                     _ => "✅ работает",
                 }));
-
-            // инциденты за 7 дней (только видимые ноды, не скрытые админом, не короче задержки показа)
-            var delay = TimeSpan.FromMinutes(_cfg.StatusDelayMin);
-            var names = list.ToDictionary(s => s.Node.Name, s => Tag(s));
-            var items = _log.All()
-                .Where(i => (i.Key.EndsWith("|conn") || i.Key.EndsWith("|ru")) && i.Start >= now.AddDays(-7))
-                .Select(i => (inc: i, node: i.Key[..i.Key.LastIndexOf('|')]))
-                .Where(x => names.ContainsKey(x.node) && (x.inc.End ?? now) - x.inc.Start >= delay && !HiddenBy(x.node, x.inc, now))
-                .OrderByDescending(x => x.inc.Start).Take(10).ToList();
-            sb.AppendLine();
-            if (items.Count == 0) sb.AppendLine("За последние 7 дней сбоев не было.");
-            else
-            {
-                sb.AppendLine("Сбои за 7 дней:");
-                foreach (var (inc, node) in items)
-                {
-                    var what = inc.Key.EndsWith("|ru")
-                        ? (inc.Severity == "warn" ? "🟡 перебои у части провайдеров в России" : "🚫 недоступен из России")
-                        : "🔴 сервер не отвечал";
-                    var when = inc.End is DateTime end
-                        ? $"{inc.Start:dd.MM HH:mm}–{end:HH:mm} ({IncidentLog.Dur(end - inc.Start)})"
-                        : $"{Since(inc.Start, now)}, продолжается";
-                    sb.AppendLine($"{names[node]} — {what}: {when}");
-                }
-            }
 
             if (admin)
             {
