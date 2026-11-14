@@ -1145,6 +1145,53 @@ public partial class Bot
             Telegram.Inline(_cfg.PayPlans.Select(p => ($"{MonthsText(p.months)} — {Money(p.price * n)}" + (n > 1 ? $" ({n} × {Money(p.price)})" : ""), $"plan:{setId}:{p.months}")), 1));
     }
 
+    // «Я оплатил» (paid = true) или отмена заявки: общая часть кнопок бота и мини-приложения. null — выполнено, иначе причина отказа
+    string? FinishPay(string chat, string arg, bool paid)
+    {
+        Payment? p;
+        lock (_lock) p = _state.Payments.FirstOrDefault(x => x.Id == arg && x.Chat == chat);
+        if (p == null) return "Заявка не найдена";
+        if (p.Status != "new") return p.Status == "sent" ? "Уже отправлено на проверку" : "Заявка уже закрыта";
+        lock (_lock)
+        {
+            p.Status = paid ? "sent" : "cancel";
+            if (paid) _state.AwaitProof[chat] = p.Id;
+            _state.Save(_cfg.DataDir);
+        }
+        if (!paid) { _tg.Send(chat, "Заявка отменена.", ChatKeyboard(chat)); return null; }
+        _tg.Send(chat, "Спасибо! Отправил администратору на проверку — после подтверждения " + (p.Keys().Count > 1 ? "подписки продлятся" : "подписка продлится") + ", я напишу.\n\n" +
+                       "Если есть скриншот или чек перевода — пришлите его сюда, это ускорит проверку.", ChatKeyboard(chat));
+        var info = PayInfo(p);
+        foreach (var a in _cfg.Chats) _tg.Send(a, "💳 Оплата на проверку: " + info, PayButtons(p.Id));
+        Log.Write($"оплата на проверку: {p.Username} {p.Months} мес {p.Amount}");
+        return null;
+    }
+
+    // Заявка на продление (общая часть кнопок бота и мини-приложения). null — не получилось, причина в error
+    Payment? CreatePayment(string chat, List<string> keys, int months, out string error)
+    {
+        error = "";
+        var mine = SubsOf(chat);
+        var users = keys.Select(k => mine.FirstOrDefault(x => Key(x) == k)).Where(u => u != null && Payable(u)).Select(u => u!).ToList();
+        var plan = _cfg.PayPlans.FirstOrDefault(p => p.months == months);
+        if (users.Count == 0 || plan.months == 0) { error = "Тариф или подписки не найдены — начните заново"; return null; }
+        var pay = new Payment
+        {
+            Id = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant(),
+            Chat = chat, UserUuid = Key(users[0]), Username = string.Join(", ", users.Select(u => u.Username)),
+            Items = users.Select(Key).ToList(), Names = users.Select(u => u.Username).ToList(),
+            Months = months, Price = plan.price, Amount = plan.price * users.Count,
+        };
+        lock (_lock)
+        {
+            _state.Payments.Add(pay);
+            if (_state.Payments.Count > 500) _state.Payments.RemoveRange(0, _state.Payments.Count - 500);
+            _paySel.Remove(chat);
+            _state.Save(_cfg.DataDir);
+        }
+        return pay;
+    }
+
     string PayButtons(string pid) => Telegram.Inline(new[] { ("✅ Подтвердить", "ok:" + pid), ("❌ Отклонить", "no:" + pid) });
 
     string PayInfo(Payment p)
@@ -1214,28 +1261,12 @@ public partial class Bot
                     var setOrKey = arg[..i];
                     List<string> keys;
                     lock (_lock) keys = _paySets.TryGetValue(setOrKey, out var ks) ? ks : new List<string> { setOrKey };   // старые кнопки — одна подписка
-                    var mine = SubsOf(chat);
-                    var users = keys.Select(k => mine.FirstOrDefault(x => Key(x) == k)).Where(u => u != null && Payable(u)).Select(u => u!).ToList();
-                    var plan = _cfg.PayPlans.FirstOrDefault(p => p.months == months);
-                    if (users.Count == 0 || plan.months == 0) return "Тариф или подписки не найдены — начните заново";
-                    var pay = new Payment
-                    {
-                        Id = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant(),
-                        Chat = chat, UserUuid = Key(users[0]), Username = string.Join(", ", users.Select(u => u.Username)),
-                        Items = users.Select(Key).ToList(), Names = users.Select(u => u.Username).ToList(),
-                        Months = months, Price = plan.price, Amount = plan.price * users.Count,
-                    };
-                    lock (_lock)
-                    {
-                        _state.Payments.Add(pay);
-                        if (_state.Payments.Count > 500) _state.Payments.RemoveRange(0, _state.Payments.Count - 500);
-                        _paySel.Remove(chat);
-                        _state.Save(_cfg.DataDir);
-                    }
+                    var pay = CreatePayment(chat, keys, months, out var payErr);
+                    if (pay == null) return payErr;
                     var details = _cfg.PayDetails != "" ? _cfg.PayDetails : "реквизиты уточните у администратора";
-                    var what = users.Count == 1
-                        ? $"продление «{users[0].Username}» на {MonthsText(months)}"
-                        : $"продление {users.Count} подписок на {MonthsText(months)} ({users.Count} × {Money(plan.price)}): {string.Join(", ", users.Select(u => u.Username))}";
+                    var what = pay.Items.Count == 1
+                        ? $"продление «{pay.Names[0]}» на {MonthsText(months)}"
+                        : $"продление {pay.Items.Count} подписок на {MonthsText(months)} ({pay.Items.Count} × {Money(pay.Price)}): {string.Join(", ", pay.Names)}";
                     _tg.Send(chat, $"К оплате: {Money(pay.Amount)} — {what}.\n\n" +
                                    $"Реквизиты для перевода:\n{details}\n\n" +
                                    "Переведите всю сумму одним платежом и нажмите «Я оплатил». Администратор проверит поступление, и подписки продлятся автоматически.",
@@ -1245,23 +1276,7 @@ public partial class Bot
             case "paid":
             case "cancel":
                 {
-                    Payment? p;
-                    lock (_lock) p = _state.Payments.FirstOrDefault(x => x.Id == arg && x.Chat == chat);
-                    if (p == null) return "Заявка не найдена";
-                    if (p.Status != "new") return p.Status == "sent" ? "Уже отправлено на проверку" : "Заявка уже закрыта";
-                    lock (_lock)
-                    {
-                        p.Status = kind == "paid" ? "sent" : "cancel";
-                        if (kind == "paid") _state.AwaitProof[chat] = p.Id;
-                        _state.Save(_cfg.DataDir);
-                    }
-                    if (kind == "cancel") { _tg.Send(chat, "Заявка отменена.", ChatKeyboard(chat)); return null; }
-                    _tg.Send(chat, "Спасибо! Отправил администратору на проверку — после подтверждения " + (p.Keys().Count > 1 ? "подписки продлятся" : "подписка продлится") + ", я напишу.\n\n" +
-                                   "Если есть скриншот или чек перевода — пришлите его сюда, это ускорит проверку.", ChatKeyboard(chat));
-                    var info = PayInfo(p);
-                    foreach (var a in _cfg.Chats) _tg.Send(a, "💳 Оплата на проверку: " + info, PayButtons(p.Id));
-                    Log.Write($"оплата на проверку: {p.Username} {p.Months} мес {p.Amount}");
-                    return null;
+                    return FinishPay(chat, arg, kind == "paid");
                 }
             case "ok":
             case "no":
