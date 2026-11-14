@@ -343,6 +343,7 @@ public class Payment
     public List<string> Names { get; set; } = new();
     public Dictionary<string, string> DoneItems { get; set; } = new();   // продлённые: ключ подписки → новая дата
     public int Price { get; set; }                                        // цена за одну подписку
+    public List<string> Proofs { get; set; } = new();                     // file_id присланных скриншотов (для мини-приложения), последние 5
 
     public List<string> Keys() => Items.Count > 0 ? Items : new List<string> { UserUuid };
     public List<string> AllNames() => Names.Count > 0 ? Names : new List<string> { Username };

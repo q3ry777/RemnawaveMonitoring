@@ -52,7 +52,7 @@ public partial class Bot
             if (method == "GET" && (path == "/" || path == "/index.html"))
             {
                 ctx.Response.Headers["Content-Security-Policy"] =
-                    "default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; base-uri 'none'";
+                    "default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src blob:; base-uri 'none'";
                 MiniReply(ctx, 200, "text/html; charset=utf-8", MiniAppPage.Html);
                 return;
             }
@@ -64,6 +64,7 @@ public partial class Bot
                 var chat = userId.ToString();
                 if (!MiniRate("u:" + chat, 60)) { MiniReply(ctx, 429, "application/json", "{\"error\":\"rate\"}"); return; }
                 if (!IsAdmin(chat) && SubsOf(chat).Count == 0) { MiniReply(ctx, 403, "application/json", "{\"error\":\"no_access\"}"); return; }
+                if (path == "/api/admin/proof") { await MiniProofAsync(ctx, chat, await MiniBodyAsync(ctx)); return; }
                 var (code, body) = await MiniApiAsync(chat, path, await MiniBodyAsync(ctx));
                 MiniReply(ctx, code, "application/json", JsonSerializer.Serialize(body));
                 return;
@@ -145,6 +146,8 @@ public partial class Bot
             role = admin ? "admin" : "user",
             cabinet = show,
             main = _cfg.Chats.Contains(chat),
+            payAdmin = _cfg.Chats.Contains(chat) && (_cfg.PayEnabled || PaymentsCount() > 0),
+            pending = _cfg.Chats.Contains(chat) ? PendingPayments().Count : 0,
             statusEnabled = _cfg.StatusEnabled,
             pay = _cfg.PayEnabled && _cfg.PayPlans.Count > 0
                 ? new { currency = _cfg.Currency, plans = _cfg.PayPlans.Select(x => new { months = x.months, price = x.price, label = MonthsText(x.months) }).ToList() }
@@ -232,6 +235,13 @@ public partial class Bot
             }
 
             // ---- админ ----
+            case "/api/admin/payments": return main ? Ok(BuildAdminPayments()) : Fail("Оплаты проверяют главные админы", 403);
+            case "/api/admin/pay/review":
+            {
+                if (!main) return Fail("Оплаты проверяют главные админы", 403);
+                var approve = b is JsonElement re && re.ValueKind == JsonValueKind.Object && re.TryGetProperty("approve", out var ap) && ap.ValueKind == JsonValueKind.True;
+                return Ok(new { message = await ReviewPaymentAsync(chat, Str("id"), approve) });
+            }
             case "/api/admin/summary": return Ok(BuildAdminSummary());
             case "/api/admin/traffic": return Ok(await BuildAdminTrafficAsync(Math.Clamp(Num("days", 7), 1, 30)));
             case "/api/admin/incidents": return Ok(BuildAdminIncidents());
@@ -351,4 +361,53 @@ public partial class Bot
         pay_details = _cfg.PayDetails,
         obs = string.Join("\n", _cfg.Observers.Select(kv => $"{kv.Key} {string.Join(",", kv.Value)}")),
     };
+
+    int PaymentsCount() { lock (_lock) return _state.Payments.Count; }
+
+    object BuildAdminPayments()
+    {
+        lock (_lock)
+        {
+            object Row(Payment p) => new
+            {
+                id = p.Id, names = p.AllNames(), months = p.Months, amount = Money(p.Amount), created = p.Created.ToString("dd.MM HH:mm"),
+                status = p.Status, newExpire = p.NewExpire, proofs = p.Proofs.Count,
+            };
+            return new
+            {
+                pending = _state.Payments.Where(p => p.Status is "sent" or "busy").OrderBy(p => p.Created).Select(Row).ToList(),
+                done = _state.Payments.Where(p => p.Status is "ok" or "no").OrderByDescending(p => p.Created).Take(15).Select(Row).ToList(),
+            };
+        }
+    }
+
+    // Картинка чека для админа: Telegram отдаёт файл по file_id, бот пересылает его в мини-приложение
+    async Task MiniProofAsync(HttpListenerContext ctx, string chat, JsonElement? b)
+    {
+        if (!_cfg.Chats.Contains(chat)) { MiniReply(ctx, 403, "application/json", "{\"error\":\"admin\"}"); return; }
+        string id = "";
+        int n = 0;
+        if (b is JsonElement e && e.ValueKind == JsonValueKind.Object)
+        {
+            if (e.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.String) id = i.GetString() ?? "";
+            if (e.TryGetProperty("n", out var nn) && nn.ValueKind == JsonValueKind.Number) nn.TryGetInt32(out n);
+        }
+        string? fileId;
+        lock (_lock)
+        {
+            var p = _state.Payments.FirstOrDefault(x => x.Id == id);
+            fileId = p != null && n >= 0 && n < p.Proofs.Count ? p.Proofs[n] : null;
+        }
+        var f = fileId == null ? null : await _tg.DownloadFileAsync(fileId);
+        if (f == null || f.Value.data.Length > 10_000_000) { MiniReply(ctx, 404, "application/json", "{\"error\":\"no_file\"}"); return; }
+        try
+        {
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = f.Value.type;
+            ctx.Response.ContentLength64 = f.Value.data.Length;
+            ctx.Response.OutputStream.Write(f.Value.data);
+            ctx.Response.Close();
+        }
+        catch { }
+    }
 }

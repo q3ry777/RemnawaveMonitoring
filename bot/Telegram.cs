@@ -30,6 +30,34 @@ public class Telegram
     public Func<string, string, long, bool, string, string, Task>? OnMessage;
     public Func<string, string, string, long, Task>? OnCallback;   // + id сообщения с кнопкой (чтобы его обновить)
 
+    // file_id вложения последнего принятого сообщения (фото или картинка-файл); пусто, если вложения нет.
+    // Сообщения обрабатываются по одному, поэтому значение не перетирается, пока обработчик работает
+    public string CurrentFile = "";
+
+    static string FileIdOf(JsonElement m)
+    {
+        if (m.TryGetProperty("photo", out var ph) && ph.ValueKind == JsonValueKind.Array && ph.GetArrayLength() > 0)
+            return J.S(ph[ph.GetArrayLength() - 1], "file_id");
+        if (m.TryGetProperty("document", out var doc) && J.S(doc, "mime_type").StartsWith("image/")) return J.S(doc, "file_id");
+        return "";
+    }
+
+    // Скачать файл по file_id (скриншот оплаты): байты и тип картинки; null — не вышло
+    public async Task<(byte[] data, string type)?> DownloadFileAsync(string fileId)
+    {
+        try
+        {
+            using var r = await _http.GetAsync(Url("getFile") + "?file_id=" + Uri.EscapeDataString(fileId));
+            using var doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync());
+            var path = J.S(doc.RootElement, "result", "file_path");
+            if (path == "") return null;
+            var bytes = await _http.GetByteArrayAsync($"https://api.telegram.org/file/bot{_cfg.BotToken}/{path}");
+            var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
+            return (bytes, ext == ".png" ? "image/png" : ext == ".webp" ? "image/webp" : ext == ".gif" ? "image/gif" : "image/jpeg");
+        }
+        catch (Exception ex) { Log.Write("скачивание файла: " + ex.Message); return null; }
+    }
+
     public static readonly (string cmd, string desc)[] AdminCommands =
     {
         ("status", "сводка"), ("nodes", "подробности по нодам"), ("users", "кто сейчас онлайн"),
@@ -281,6 +309,7 @@ public class Telegram
                 var from = m.TryGetProperty("from", out var f) ? f : chatEl;
                 var who = string.Join(" ", new[] { J.S(from, "first_name"), J.S(from, "last_name") }.Where(x => x != ""))
                           + (J.S(from, "username") is { Length: > 0 } nick ? $" (@{nick})" : "");
+                CurrentFile = FileIdOf(m);
                 await OnMessage(J.S(chatEl, "id"), raw, m.TryGetProperty("message_id", out var mid) ? mid.GetInt64() : 0, media, who.Trim(), replyTo);
             }
             catch (Exception ex) { Log.Write("обработка сообщения: " + ex.Message); }

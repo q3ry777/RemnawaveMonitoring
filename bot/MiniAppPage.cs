@@ -65,6 +65,7 @@ body{margin:0;background:#0f1318;color:#e6e9ee;font-family:Inter,system-ui,sans-
 .fld .btn{margin-top:8px;flex:none;width:100%}
 .opt{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;min-height:48px;padding:8px 12px;margin-top:8px;border-radius:12px;border:1px solid #2f3846;background:#1d232c;color:#e6e9ee;font:600 14px Inter,system-ui,sans-serif;text-align:left;cursor:pointer}
 .opt.sel{border-color:#ffb020;box-shadow:inset 0 0 0 1px #ffb020}
+.proof{display:block;max-width:100%;border-radius:10px;margin-top:10px}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;z-index:5}
 .sh{width:100%;background:#171c23;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px}
 pre.det{white-space:pre-wrap;word-break:break-word;font:13px 'JetBrains Mono',ui-monospace,monospace;background:#0f1318;border:1px solid #252c36;border-radius:10px;padding:12px;margin:10px 0 0}
@@ -126,7 +127,9 @@ pre.det{white-space:pre-wrap;word-break:break-word;font:13px 'JetBrains Mono',ui
   function tabList() {
     var m = S.me, t = [], subs = m.subs || [];
     if (m.role === 'admin') {
-      t.push(['sum', 'Сводка'], ['tr', 'Трафик'], ['inc', 'Сбои']);
+      t.push(['sum', 'Сводка'], ['tr', 'Трафик']);
+      if (m.payAdmin) t.push(['pays', 'Оплаты' + (m.pending ? ' (' + m.pending + ')' : '')]);
+      t.push(['inc', 'Сбои']);
       if (m.main) t.push(['set', 'Настройки']);
       if (subs.length) t.push(['cab', 'Кабинет']);
     } else {
@@ -136,10 +139,10 @@ pre.det{white-space:pre-wrap;word-break:break-word;font:13px 'JetBrains Mono',ui
     }
     return t;
   }
-  var TITLES = { cab: 'Мой кабинет', st: 'Статус сервиса', pay: 'Оплата', sum: 'Сводка', tr: 'Трафик', inc: 'Сбои', set: 'Настройки' };
+  var TITLES = { cab: 'Мой кабинет', st: 'Статус сервиса', pay: 'Оплата', sum: 'Сводка', tr: 'Трафик', pays: 'Оплаты', inc: 'Сбои', set: 'Настройки' };
 
   function loadTab() {
-    var q = { sum: ['/api/admin/summary'], tr: ['/api/admin/traffic', { days: S.days }], inc: ['/api/admin/incidents'], set: ['/api/admin/settings'] }[S.tab];
+    var q = { sum: ['/api/admin/summary'], tr: ['/api/admin/traffic', { days: S.days }], inc: ['/api/admin/incidents'], set: ['/api/admin/settings'], pays: ['/api/admin/payments'] }[S.tab];
     if (!q) return Promise.resolve();
     var t = S.tab;
     return api(q[0], q[1]).then(function (d) { S.data[t] = d; });
@@ -439,6 +442,60 @@ pre.det{white-space:pre-wrap;word-break:break-word;font:13px 'JetBrains Mono',ui
     main.appendChild(rk);
   }
 
+  // ---------- админ: оплаты (проверка заявок) ----------
+  function proofs(p, box) {
+    box.textContent = '';
+    var left = Math.min(p.proofs, 3);
+    for (var i = 0; i < left; i++) (function (n) {
+      fetch('/api/admin/proof', { method: 'POST', headers: { 'X-Init-Data': (tg && tg.initData) || '', 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, n: n }) })
+        .then(function (r) { if (!r.ok) throw new Error('http'); return r.blob(); })
+        .then(function (b) { var img = new Image(); img.src = URL.createObjectURL(b); img.alt = 'Скриншот оплаты'; img.className = 'proof'; box.appendChild(img); })
+        .catch(function () { box.appendChild(el('div', 'dim note', 'Скриншот не загрузился. Он остался в чате с ботом.')); });
+    })(i);
+  }
+
+  function review(p, approve, buttons) {
+    buttons.forEach(function (b) { b.disabled = true; });
+    api('/api/admin/pay/review', { id: p.id, approve: approve }).then(function (r) {
+      toast(r.message, 3500);
+      return Promise.all([loadTab(), api('/api/me').then(function (me) { S.me = me; })]);
+    }).then(render).catch(function (e) { buttons.forEach(function (b) { b.disabled = false; }); fail(e); });
+  }
+
+  function payCard(p, pending) {
+    var c = el('div', 'card'), top = el('div', 'row');
+    top.appendChild(el('b', '', p.names.join(', ')));
+    top.appendChild(pending ? pill('ждёт проверки', 'warn') : p.status === 'ok' ? pill('подтверждена', 'ok') : pill('отклонена', 'bad'));
+    c.appendChild(top);
+    c.appendChild(el('div', 'big mt', p.amount));
+    c.appendChild(el('div', 'dim mt', 'продление на ' + p.months + ' мес · ' + p.created));
+    if (!pending && p.status === 'ok' && p.newExpire) c.appendChild(el('div', 'dim mt', 'продлено до ' + p.newExpire));
+    if (!pending) return c;
+    var box = el('div');
+    if (p.proofs) c.appendChild(btn('Показать скриншот (' + p.proofs + ')', 'lnk', function () { proofs(p, box); }));
+    else c.appendChild(el('div', 'dim note', 'Скриншот не присылали. Если он нужен, он может прийти в чат позже.'));
+    c.appendChild(box);
+    var ok = btn('Подтвердить', 'btn pri'), no = btn('Отклонить', 'btn');
+    ok.onclick = function () { review(p, true, [ok, no]); };
+    no.onclick = function () {
+      var go = function () { review(p, false, [ok, no]); };
+      if (tg && tg.showConfirm) tg.showConfirm('Отклонить оплату? Пользователю придёт сообщение, что она не подтверждена.', function (y) { if (y) go(); }); else go();
+    };
+    var bt = el('div', 'btns'); bt.appendChild(ok); bt.appendChild(no); c.appendChild(bt);
+    return c;
+  }
+
+  function paysView(main) {
+    var d = S.data.pays;
+    if (!d) { main.appendChild(el('div', 'card dim', 'Загрузка…')); return; }
+    if (!d.pending.length) main.appendChild(el('div', 'card dim', 'Заявок на проверку нет.'));
+    d.pending.forEach(function (p) { main.appendChild(payCard(p, true)); });
+    if (d.done.length) {
+      main.appendChild(el('div', 'lbl sp', 'Последние заявки'));
+      d.done.forEach(function (p) { main.appendChild(payCard(p, false)); });
+    }
+  }
+
   // ---------- админ: сбои ----------
   function incView(main) {
     var d = S.data.inc;
@@ -512,7 +569,7 @@ pre.det{white-space:pre-wrap;word-break:break-word;font:13px 'JetBrains Mono',ui
     var main = el('div', 'main'); app.appendChild(main);
     if (S.err) { main.appendChild(el('div', 'card dim', S.err)); return; }
     if (!S.me) { main.appendChild(el('div', 'card dim', 'Загрузка…')); return; }
-    ({ cab: cabinet, st: status, pay: payView, sum: sumView, tr: trView, inc: incView, set: setView }[S.tab] || cabinet)(main);
+    ({ cab: cabinet, st: status, pay: payView, sum: sumView, tr: trView, pays: paysView, inc: incView, set: setView }[S.tab] || cabinet)(main);
     var tabs = tabList();
     if (tabs.length > 1) {
       var bar = el('div', 'tabs');

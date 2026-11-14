@@ -1281,71 +1281,78 @@ public partial class Bot
             case "ok":
             case "no":
                 {
-                    if (!_cfg.Chats.Contains(chat)) return "Подтверждать оплату может только админ";
-                    Payment? p;
-                    lock (_lock) p = _state.Payments.FirstOrDefault(x => x.Id == arg);
-                    if (p == null) return "Заявка не найдена";
-                    if (p.Status != "sent") return p.Status == "ok" ? "Уже подтверждено" : p.Status == "no" ? "Уже отклонено" : "Заявка закрыта";
-                    if (kind == "no")
-                    {
-                        if (p.DoneItems.Count > 0) return "Часть подписок уже продлена — отклонить нельзя";
-                        lock (_lock) { p.Status = "no"; p.Done = DateTime.Now; p.By = chat; _state.AwaitProof.Remove(p.Chat); _state.Save(_cfg.DataDir); }
-                        _tg.Send(p.Chat, $"❌ Оплата продления «{p.Username}» не подтверждена. Если вы переводили деньги — напишите администратору.", ChatKeyboard(p.Chat));
-                        foreach (var a in _cfg.Chats) _tg.Send(a, $"❌ Оплата отклонена: «{p.Username}», {Money(p.Amount)} (заявка {p.Id})", AdminKeyboard(a));
-                        return "Отклонено";
-                    }
-                    lock (_lock)
-                    {
-                        if (p.Status != "sent") return "Уже обрабатывается";
-                        p.Status = "busy";   // защита от двойного нажатия
-                    }
-                    // продлеваем каждую подписку; уже продлённые (при повторном нажатии после ошибки) пропускаем
-                    var keys = p.Keys();
-                    var names = p.AllNames();
-                    var errors = new List<string>();
-                    for (int k = 0; k < keys.Count; k++)
-                    {
-                        if (p.DoneItems.ContainsKey(keys[k])) continue;
-                        var name = k < names.Count ? names[k] : keys[k];
-                        var u = UserByKey(keys[k]);
-                        if (u == null) { errors.Add($"«{name}»: пользователь не найден в панели"); continue; }
-                        try
-                        {
-                            var newExp = await _api.ExtendUserAsync(_cfg.Writer, u, p.Months);
-                            lock (_lock) { p.DoneItems[keys[k]] = newExp.ToLocalTime().ToString("dd.MM.yyyy"); _state.Save(_cfg.DataDir); }
-                        }
-                        catch (Exception ex) { errors.Add($"«{name}»: {ex.Message}"); Log.Write($"продление {name} не удалось: {ex.Message}"); }
-                    }
-                    string Summary() => string.Join(", ", keys.Select((key, k) =>
-                        p.DoneItems.TryGetValue(key, out var d) ? $"«{(k < names.Count ? names[k] : key)}» до {d}" : null).Where(x => x != null));
-                    if (errors.Count == 0)
-                    {
-                        lock (_lock)
-                        {
-                            p.Status = "ok"; p.Done = DateTime.Now; p.By = chat; p.NewExpire = Summary();
-                            if (keys.Count == 1) p.NewExpire = p.DoneItems.Values.FirstOrDefault() ?? "";
-                            _state.AwaitProof.Remove(p.Chat);
-                            _state.Save(_cfg.DataDir);
-                        }
-                        var userText = keys.Count == 1
-                            ? $"✅ Оплата получена, спасибо! Подписка «{names[0]}» продлена до {p.NewExpire}."
-                            : "✅ Оплата получена, спасибо! Продлено:\n" + string.Join("\n", keys.Select((key, k) => $"• «{(k < names.Count ? names[k] : key)}» — до {p.DoneItems[key]}"));
-                        _tg.Send(p.Chat, userText, ChatKeyboard(p.Chat));
-                        foreach (var a in _cfg.Chats) _tg.Send(a, $"✅ Оплата подтверждена: +{MonthsText(p.Months)}, {Money(p.Amount)} → {Summary()}", AdminKeyboard(a));
-                        Log.Write($"оплата подтверждена: {Summary()}");
-                        await RefreshAsync();
-                        return keys.Count == 1 ? "Продлено до " + p.NewExpire : $"Продлено: {keys.Count}";
-                    }
-                    lock (_lock) { p.Status = "sent"; _state.Save(_cfg.DataDir); }
-                    var partial = p.DoneItems.Count > 0 ? $"\nУже продлено: {Summary()} — повторно не продлится." : "";
-                    _tg.Send(chat, "⚠️ Не удалось продлить:\n" + string.Join("\n", errors) + partial +
-                                   "\nИсправьте (или продлите вручную в панели) и нажмите «Подтвердить» ещё раз — продлятся только оставшиеся." + (errors.Any(e => e.Contains("401") || e.Contains("403")) ? " Нужен токен с правом изменять пользователей (REMNAWAVE_WRITE_TOKEN)." : ""),
-                        PayButtons(p.Id));
-                    if (p.DoneItems.Count > 0) await RefreshAsync();
-                    return "Ошибка продления";
+                    return await ReviewPaymentAsync(chat, arg, kind == "ok");
                 }
         }
         return null;
+    }
+
+    // Админ подтверждает («Подтвердить», approve = true) или отклоняет заявку на оплату: общая часть кнопок бота и мини-приложения.
+    // Возвращает короткий итог для всплывающего сообщения
+    async Task<string> ReviewPaymentAsync(string chat, string arg, bool approve)
+    {
+        if (!_cfg.Chats.Contains(chat)) return "Подтверждать оплату может только админ";
+        Payment? p;
+        lock (_lock) p = _state.Payments.FirstOrDefault(x => x.Id == arg);
+        if (p == null) return "Заявка не найдена";
+        if (p.Status != "sent") return p.Status == "ok" ? "Уже подтверждено" : p.Status == "no" ? "Уже отклонено" : "Заявка закрыта";
+        if (!approve)
+        {
+            if (p.DoneItems.Count > 0) return "Часть подписок уже продлена — отклонить нельзя";
+            lock (_lock) { p.Status = "no"; p.Done = DateTime.Now; p.By = chat; _state.AwaitProof.Remove(p.Chat); _state.Save(_cfg.DataDir); }
+            _tg.Send(p.Chat, $"❌ Оплата продления «{p.Username}» не подтверждена. Если вы переводили деньги — напишите администратору.", ChatKeyboard(p.Chat));
+            foreach (var a in _cfg.Chats) _tg.Send(a, $"❌ Оплата отклонена: «{p.Username}», {Money(p.Amount)} (заявка {p.Id})", AdminKeyboard(a));
+            return "Отклонено";
+        }
+        lock (_lock)
+        {
+            if (p.Status != "sent") return "Уже обрабатывается";
+            p.Status = "busy";   // защита от двойного нажатия
+        }
+        // продлеваем каждую подписку; уже продлённые (при повторном нажатии после ошибки) пропускаем
+        var keys = p.Keys();
+        var names = p.AllNames();
+        var errors = new List<string>();
+        for (int k = 0; k < keys.Count; k++)
+        {
+            if (p.DoneItems.ContainsKey(keys[k])) continue;
+            var name = k < names.Count ? names[k] : keys[k];
+            var u = UserByKey(keys[k]);
+            if (u == null) { errors.Add($"«{name}»: пользователь не найден в панели"); continue; }
+            try
+            {
+                var newExp = await _api.ExtendUserAsync(_cfg.Writer, u, p.Months);
+                lock (_lock) { p.DoneItems[keys[k]] = newExp.ToLocalTime().ToString("dd.MM.yyyy"); _state.Save(_cfg.DataDir); }
+            }
+            catch (Exception ex) { errors.Add($"«{name}»: {ex.Message}"); Log.Write($"продление {name} не удалось: {ex.Message}"); }
+        }
+        string Summary() => string.Join(", ", keys.Select((key, k) =>
+            p.DoneItems.TryGetValue(key, out var d) ? $"«{(k < names.Count ? names[k] : key)}» до {d}" : null).Where(x => x != null));
+        if (errors.Count == 0)
+        {
+            lock (_lock)
+            {
+                p.Status = "ok"; p.Done = DateTime.Now; p.By = chat; p.NewExpire = Summary();
+                if (keys.Count == 1) p.NewExpire = p.DoneItems.Values.FirstOrDefault() ?? "";
+                _state.AwaitProof.Remove(p.Chat);
+                _state.Save(_cfg.DataDir);
+            }
+            var userText = keys.Count == 1
+                ? $"✅ Оплата получена, спасибо! Подписка «{names[0]}» продлена до {p.NewExpire}."
+                : "✅ Оплата получена, спасибо! Продлено:\n" + string.Join("\n", keys.Select((key, k) => $"• «{(k < names.Count ? names[k] : key)}» — до {p.DoneItems[key]}"));
+            _tg.Send(p.Chat, userText, ChatKeyboard(p.Chat));
+            foreach (var a in _cfg.Chats) _tg.Send(a, $"✅ Оплата подтверждена: +{MonthsText(p.Months)}, {Money(p.Amount)} → {Summary()}", AdminKeyboard(a));
+            Log.Write($"оплата подтверждена: {Summary()}");
+            await RefreshAsync();
+            return keys.Count == 1 ? "Продлено до " + p.NewExpire : $"Продлено: {keys.Count}";
+        }
+        lock (_lock) { p.Status = "sent"; _state.Save(_cfg.DataDir); }
+        var partial = p.DoneItems.Count > 0 ? $"\nУже продлено: {Summary()} — повторно не продлится." : "";
+        _tg.Send(chat, "⚠️ Не удалось продлить:\n" + string.Join("\n", errors) + partial +
+                       "\nИсправьте (или продлите вручную в панели) и нажмите «Подтвердить» ещё раз — продлятся только оставшиеся." + (errors.Any(e => e.Contains("401") || e.Contains("403")) ? " Нужен токен с правом изменять пользователей (REMNAWAVE_WRITE_TOKEN)." : ""),
+            PayButtons(p.Id));
+        if (p.DoneItems.Count > 0) await RefreshAsync();
+        return "Ошибка продления";
     }
 
     // Скриншот перевода — копией всем админам с теми же кнопками
@@ -1354,6 +1361,8 @@ public partial class Bot
         Payment? p;
         lock (_lock) p = _state.Payments.FirstOrDefault(x => x.Id == pid && x.Chat == chat);
         if (p == null || p.Status != "sent") { lock (_lock) _state.AwaitProof.Remove(chat); _tg.Send(chat, "Эта заявка уже обработана.", ChatKeyboard(chat)); return; }
+        var fileId = _tg.CurrentFile;   // фото или картинка-файл; для остальных вложений пусто
+        if (fileId != "") lock (_lock) { p.Proofs.Add(fileId); if (p.Proofs.Count > 5) p.Proofs.RemoveAt(0); _state.Save(_cfg.DataDir); }
         var info = PayInfo(p);
         foreach (var a in _cfg.Chats) _tg.Copy(a, chat, messageId, "🧾 Скриншот оплаты: " + info, PayButtons(p.Id));
         _tg.Send(chat, "Скриншот передан администратору. Как только оплату подтвердят — напишу.", ChatKeyboard(chat));
