@@ -56,6 +56,7 @@ public class Settings : IPanelConfig
     // Вкладка «оплаты»: бот открывает порт на сервере, программа забирает заявки (запрос подписан, ответ зашифрован)
     public bool TgApiEnabled { get; set; }
     public string TgApiHost { get; set; } = "";
+    public string TgMiniAppUrl { get; set; } = "";       // адрес мини-приложения в Telegram (https://app…); пусто — выключено
     public int TgApiPort { get; set; } = 8090;
     [JsonIgnore] public string TgApiKey { get; set; } = "";
     public string? TgApiKeyEnc { get; set; }

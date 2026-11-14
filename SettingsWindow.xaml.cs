@@ -33,6 +33,7 @@ public partial class SettingsWindow : Window
         RuCheckBox.Text = s.RuCheckMin.ToString();
         TgWriteTokenBox.Password = s.TgWriteToken;
         TgApiBox.IsChecked = s.TgApiEnabled;
+        TgMiniAppBox.Text = s.TgMiniAppUrl;
         TgApiHostBox.Text = s.TgApiHost != "" ? s.TgApiHost : Uri.TryCreate(s.BaseUrl, UriKind.Absolute, out var pu) ? pu.Host : "";
         TgApiPortBox.Text = s.TgApiPort.ToString();
 
@@ -78,6 +79,7 @@ public partial class SettingsWindow : Window
         _s.TgWriteToken = TgWriteTokenBox.Password.Trim();
         _s.TgApiEnabled = TgApiBox.IsChecked == true;
         _s.TgApiHost = TgApiHostBox.Text.Trim();
+        _s.TgMiniAppUrl = TgMiniAppBox.Text.Trim().TrimEnd('/');
         _s.TgApiPort = ApiPort();
         _s.Theme = LightRb.IsChecked == true ? "light" : "dark";
         try { AutoRun.Set(AutoBox.IsChecked == true); }
@@ -112,10 +114,13 @@ public partial class SettingsWindow : Window
         if (api == "") { TgResultText("Нужен API-токен панели (раздел «панель»).", "Red"); return; }
         if (TgApiBox.IsChecked == true && _s.TgApiKey == "") { _s.TgApiKey = BotSetup.NewSecret(); _s.Save(); }   // ключ вкладки «оплаты»
         if (_s.TgWebhookSecret == "") { _s.TgWebhookSecret = BotSetup.NewSecret(); _s.Save(); }   // секрет вебхуков сразу сохраняется
+        var miniUrl = TgMiniAppBox.Text.Trim().TrimEnd('/');
+        if (miniUrl != "" && !miniUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        { TgResultText("Адрес мини-приложения должен начинаться с https://, например https://app.broken-tech.ru", "Red"); return; }
         var cfg = new BotSetup.Config(api, token, chat,
             int.TryParse(OnlineBox.Text, out var w) && w >= 30 ? w : 300,
             TgWebhookBox.IsChecked == true, _s.TgWebhookSecret, TgWriteTokenBox.Password.Trim(),
-            TgApiBox.IsChecked == true, _s.TgApiKey, ApiPort());
+            TgApiBox.IsChecked == true, _s.TgApiKey, ApiPort(), miniUrl);
         try
         {
             Clipboard.SetText(BotSetup.Command(cfg));

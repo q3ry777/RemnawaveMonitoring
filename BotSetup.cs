@@ -17,7 +17,7 @@ public static class BotSetup
     // пользователи, оплата, доп. админы) меняются в самом боте: /settings
     public record Config(string ApiToken, string BotToken, string ChatId, int OnlineWindowSec,
         bool Webhook, string WebhookSecret, string WriteToken,
-        bool Api, string ApiKey, int ApiPort);
+        bool Api, string ApiKey, int ApiPort, string MiniAppUrl = "");
 
 
     // Секрет подписи вебхуков: 64 символа a-z, A-Z, 0-9 (требование панели)
@@ -57,6 +57,9 @@ public static class BotSetup
         env.AppendLine("# API для вкладки «оплаты» в программе на ПК (порт открыт наружу; запросы подписаны, ответы зашифрованы этим ключом); пусто — выключено");
         env.AppendLine("BOT_API_KEY=" + (c.Api ? c.ApiKey : ""));
         env.AppendLine("BOT_API_PORT=" + c.ApiPort);
+        env.AppendLine("# мини-приложение в Telegram: адрес https://… (Caddy: reverse_proxy remnawave-bot:8081); пусто — выключено");
+        env.AppendLine("MINIAPP_URL=" + c.MiniAppUrl);
+        env.AppendLine("MINIAPP_PORT=8081");
 
         return $$"""
             bash <<'RWBOT'

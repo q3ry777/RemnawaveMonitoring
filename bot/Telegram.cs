@@ -110,6 +110,18 @@ public class Telegram
         catch { Send(chat, text, markup); }
     }
 
+    // Кнопка меню бота открывает мини-приложение (по умолчанию для всех чатов)
+    public async Task SetMenuButtonAsync(string url, string text)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(new { menu_button = new { type = "web_app", text, web_app = new { url } } });
+            using var res = await _http.PostAsync(Url("setChatMenuButton"), new StringContent(json, Encoding.UTF8, "application/json"));
+            if (!res.IsSuccessStatusCode) Log.Write("мини-приложение: кнопка меню не поставлена: " + await res.Content.ReadAsStringAsync());
+        }
+        catch (Exception ex) { Log.Write("мини-приложение: кнопка меню: " + ex.Message); }
+    }
+
     public async Task AnswerCallbackAsync(string id, string text = "")
     {
         try

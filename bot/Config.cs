@@ -51,6 +51,9 @@ public class BotConfig : IPanelConfig
     // API для программы на ПК (вкладка «оплаты»)
     public string ApiKey { get; init; } = "";
     public int ApiPort { get; init; } = 8090;
+    // Мини-приложение в Telegram: адрес https://… (Caddy проксирует на бота) и порт внутри сети Docker; пустой адрес — выключено
+    public string MiniAppUrl { get; init; } = "";
+    public int MiniAppPort { get; init; } = 8081;
     public HashSet<int> QuietHours { get; set; } = new();
     public TimeSpan DndTime { get; set; } = TimeSpan.FromHours(8);
     public string DataDir { get; init; } = "/data";
@@ -111,6 +114,8 @@ public class BotConfig : IPanelConfig
             WriteToken = Env("REMNAWAVE_WRITE_TOKEN"),
             ApiKey = Env("BOT_API_KEY"),
             ApiPort = Int("BOT_API_PORT", 8090, 1),
+            MiniAppUrl = Env("MINIAPP_URL").Trim().TrimEnd('/') is var miniUrl && miniUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? miniUrl : "",
+            MiniAppPort = Int("MINIAPP_PORT", 8081, 1),
             QuietHours = quiet,
             DndTime = dnd,
             DataDir = Env("DATA_DIR", "/data"),

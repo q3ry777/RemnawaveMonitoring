@@ -95,6 +95,7 @@ public partial class Bot
         var wh = Task.Run(() => _wh.RunAsync(ct), ct);
         var api = Task.Run(() => _apiServer.RunAsync(ct), ct);
         var ru = Task.Run(() => RuCheckLoopAsync(ct), ct);
+        var mini = Task.Run(() => MiniAppServerAsync(ct), ct);
         while (!ct.IsCancellationRequested)
         {
             try { await Task.Delay(TimeSpan.FromSeconds(_cfg.IntervalSec), ct); }

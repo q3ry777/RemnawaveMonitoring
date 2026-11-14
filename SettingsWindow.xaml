@@ -135,6 +135,11 @@
                     <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
                                Text="Нужен, чтобы подписка продлевалась сама после подтверждения оплаты. Включение оплаты, тарифы и реквизиты — в боте: /settings → «Оплата». Продлевается только профиль с настоящим сроком: профили со сроком до 2099 года считаются бессрочными."/>
 
+                    <TextBlock Text="МИНИ-ПРИЛОЖЕНИЕ В TELEGRAM (АДРЕС)" Style="{StaticResource Field}" Margin="0,16,0,6"/>
+                    <TextBox x:Name="TgMiniAppBox" Style="{StaticResource Input}"/>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Dim}"
+                               Text="Например https://app.broken-tech.ru — поддомен, который указывает на сервер; в Caddy нужен блок reverse_proxy remnawave-bot:8081. Пусто — выключено. Кнопка меню бота открывает кабинет и статус сервиса: доступ у пользователей с Telegram ID в панели и у админов."/>
+
                     <CheckBox x:Name="TgApiBox" Style="{StaticResource Check}" Margin="0,16,0,0"
                               Content="вкладка «оплаты» в программе: заявки и суммы по месяцам из бота"/>
                     <TextBlock Text="АДРЕС СЕРВЕРА С БОТОМ (IP или домен, не через Cloudflare) И ПОРТ" Style="{StaticResource Field}"/>
