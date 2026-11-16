@@ -65,18 +65,8 @@ public class BotConfig : IPanelConfig
 
     public static BotConfig Load()
     {
-        var quiet = new HashSet<int>();
-        foreach (var part in Env("QUIET_HOURS").Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            // «23,0,1» или диапазоны «23-8»
-            var r = part.Split('-');
-            if (r.Length == 2 && int.TryParse(r[0], out var a) && int.TryParse(r[1], out var b) && a is >= 0 and < 24 && b is >= 0 and < 24)
-                for (int h = a; h != b; h = (h + 1) % 24) quiet.Add(h);
-            else if (int.TryParse(part, out var h) && h is >= 0 and < 24) quiet.Add(h);
-        }
-        var dnd = TimeSpan.FromHours(8);
-        if (TimeSpan.TryParseExact(Env("DND_TIME", "08:00").Replace('.', ':'), new[] { @"h\:mm", @"hh\:mm" }, CultureInfo.InvariantCulture, out var t)
-            && t < TimeSpan.FromDays(1)) dnd = t;
+        QuietFmt.TryParseRanges(Env("QUIET_HOURS"), out var quiet, out _, lenient: true);   // «23,0,1» или «23-8»
+        var dnd = QuietFmt.TryParseTime(Env("DND_TIME", "08:00"), out var t) ? t : TimeSpan.FromHours(8);
 
         var checkMin = Int("CHECK_INTERVAL_MIN", 0, 0);
         return new BotConfig
@@ -135,7 +125,7 @@ public class BotConfig : IPanelConfig
         CheckIntervalMin = CheckIntervalMin, StatusEnabled = StatusEnabled, StatusDelayMin = StatusDelayMin,
         StatusNames = string.Join(";", StatusNames.Select(kv => kv.Key + "=" + kv.Value)),
         PayEnabled = PayEnabled, PayPlans = string.Join(",", PayPlans.Select(x => $"{x.months}:{x.price}")), PayDetails = PayDetails,
-        QuietHours = QuietHours.OrderBy(h => h).ToList(), DndTime = DndTime.ToString(@"hh\:mm"),
+        QuietHours = QuietHours.OrderBy(h => h).ToList(), DndTime = QuietFmt.TimeText(DndTime),
     };
 
     public void Apply(BotSettings s)
@@ -148,7 +138,7 @@ public class BotConfig : IPanelConfig
         StatusNames = ParseNames(s.StatusNames);
         PayEnabled = s.PayEnabled; PayPlans = ParsePlans(s.PayPlans); PayDetails = s.PayDetails;
         QuietHours = s.QuietHours.Where(h => h is >= 0 and < 24).ToHashSet();
-        if (TimeSpan.TryParseExact(s.DndTime, @"hh\:mm", CultureInfo.InvariantCulture, out var t) && t < TimeSpan.FromDays(1)) DndTime = t;
+        if (QuietFmt.TryParseTime(s.DndTime, out var t)) DndTime = t;
     }
 
     // Файл есть — настройки из него; нет — создаётся из значений .env

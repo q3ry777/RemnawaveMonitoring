@@ -335,27 +335,13 @@ public partial class Bot
         }
     }
 
-    // «23-8, 13-14» по набору часов — в том виде, в каком тихие часы вводятся
-    static string QuietEdit(HashSet<int> hours)
-    {
-        if (hours.Count == 0) return "";
-        if (hours.Count == 24) return "0-23, 23";
-        var starts = hours.Where(h => !hours.Contains((h + 23) % 24)).OrderBy(h => h).ToList();
-        return string.Join(", ", starts.Select(st =>
-        {
-            int e = st;
-            while (hours.Contains((e + 1) % 24)) e = (e + 1) % 24;
-            return $"{st}-{(e + 1) % 24}";
-        }));
-    }
-
     object BuildAdminSettings() => new
     {
         n_nodes = _cfg.NotifyNodes, n_limits = _cfg.NotifyLimits, n_billing = _cfg.NotifyBilling, n_updates = _cfg.NotifyUpdates,
         n_users = _cfg.NotifyUsers, n_panel = _cfg.NotifyPanel,
         st_on = _cfg.StatusEnabled, u_cab = _cfg.UserCabinet, u_rem = _cfg.UserReminders, pay_on = _cfg.PayEnabled,
         ru_min = _cfg.CheckIntervalMin, st_delay = _cfg.StatusDelayMin, u_days = _cfg.RemindDays, u_traf = _cfg.RemindTraffic,
-        q_range = QuietEdit(_cfg.QuietHours), q_dnd = _cfg.DndTime.ToString(@"hh\:mm"),
+        q_range = QuietFmt.Edit(_cfg.QuietHours), q_dnd = QuietFmt.TimeText(_cfg.DndTime),
         st_names = string.Join("\n", _cfg.StatusNames.Select(kv => $"{kv.Key} = {kv.Value}")),
         pay_plans = string.Join("\n", _cfg.PayPlans.Select(x => $"{x.months} {x.price}")),
         pay_details = _cfg.PayDetails,

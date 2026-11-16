@@ -276,25 +276,6 @@
         </Style.Triggers>
     </Style>
 
-    <Style x:Key="MemBar" TargetType="ProgressBar">
-        <Setter Property="Height" Value="4"/>
-        <Setter Property="Maximum" Value="1"/>
-        <Setter Property="Foreground" Value="{DynamicResource Green}"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ProgressBar">
-                    <Grid>
-                        <Border x:Name="PART_Track" Background="{DynamicResource Line}" CornerRadius="2"/>
-                        <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="2"/>
-                    </Grid>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-        <Style.Triggers>
-            <DataTrigger Binding="{Binding MemLevel}" Value="warn"><Setter Property="Foreground" Value="{DynamicResource Amber}"/></DataTrigger>
-            <DataTrigger Binding="{Binding MemLevel}" Value="crit"><Setter Property="Foreground" Value="{DynamicResource Red}"/></DataTrigger>
-        </Style.Triggers>
-    </Style>
 
     <!-- шкалы CPU / RAM / диск в карточке ноды: уровень передаётся через Tag (ok / warn / crit / none) -->
     <Style x:Key="MeterLbl" TargetType="TextBlock">

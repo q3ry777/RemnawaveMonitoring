@@ -35,7 +35,6 @@ public static class BotSetup
         return id.Contains('/') ? id : "UTC";
     }
 
-    static string B(bool v) => v ? "true" : "false";
 
     public static string Command(Config c)
     {

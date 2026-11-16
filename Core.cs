@@ -69,31 +69,6 @@ public class Settings : IPanelConfig
     public bool DemoMode { get; set; }                    // режим демонстрации: скрыты имена пользователей и IP
     public string? LastChangelog { get; set; }
 
-    // «23:00–08:00, 13:00–14:00» по набору часов
-    public static string QuietRangesText(IEnumerable<int> hours)
-    {
-        var on = new bool[24];
-        foreach (var h in hours) if (h is >= 0 and < 24) on[h] = true;
-        if (on.All(x => x)) return "весь день";
-        var parts = new List<string>();
-        for (int h = 0; h < 24; h++)
-        {
-            if (!on[h] || on[(h + 23) % 24]) continue;   // начало непрерывного участка
-            int len = 0;
-            while (len < 24 && on[(h + len) % 24]) len++;
-            parts.Add($"{h:00}:00–{(h + len) % 24:00}:00");
-        }
-        return string.Join(", ", parts);
-    }
-
-    public static bool TryParseTime(string text, out TimeSpan t)
-    {
-        t = default;
-        var s = text.Trim().Replace('.', ':');
-        if (!TimeSpan.TryParseExact(s, new[] { @"h\:mm", @"hh\:mm", "%h", "hh" }, CultureInfo.InvariantCulture, out t)) return false;
-        return t >= TimeSpan.Zero && t < TimeSpan.FromDays(1);
-    }
-
     public string UpdateRepo { get; set; } = "";
     [JsonIgnore] public string UpdateToken { get; set; } = "";
     public string? UpdateTokenEnc { get; set; }

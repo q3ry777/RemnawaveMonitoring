@@ -23,57 +23,6 @@
         <Style x:Key="Field" TargetType="TextBlock" BasedOn="{StaticResource Hdr}">
             <Setter Property="Margin" Value="0,14,0,6"/>
         </Style>
-        <Style x:Key="HourToggle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="38"/>
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="Margin" Value="0,0,4,4"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="B" CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource Line}" Background="Transparent">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="B" Property="Background" Value="{DynamicResource BgAlt}"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="B" Property="Background" Value="{DynamicResource AmberTint}"/>
-                                <Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource Amber}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource Amber}"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="SrvItem" TargetType="ListBoxItem">
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="B" Padding="10,8" Margin="0,0,0,6" CornerRadius="6" BorderThickness="1"
-                                BorderBrush="{DynamicResource Line}" Background="Transparent">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="B" Property="Background" Value="{DynamicResource BgAlt}"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="B" Property="Background" Value="{DynamicResource AmberTint}"/>
-                                <Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource Amber}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Window.Resources>
 
     <Grid>

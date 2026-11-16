@@ -12,7 +12,6 @@
     <SolidColorBrush x:Key="Red" Color="#DC2626"/>
     <SolidColorBrush x:Key="RedTint" Color="#1ADC2626"/>
     <SolidColorBrush x:Key="AmberTint" Color="#1AC77D00"/>
-    <Color x:Key="GlowGreen">#22C55E</Color>
     <RadialGradientBrush x:Key="Glow" Center="0.5,0" GradientOrigin="0.5,0" RadiusX="0.7" RadiusY="1">
         <GradientStop Color="#18FFB020" Offset="0"/>
         <GradientStop Color="#00FFB020" Offset="1"/>

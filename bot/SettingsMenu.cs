@@ -20,18 +20,7 @@ public partial class Bot
         key.StartsWith("n_") ? "notif" : key.StartsWith("st_") ? "status" : key == "ru_min" ? "ru" : key.StartsWith("q_") ? "quiet"
         : key.StartsWith("u_") ? "users" : key.StartsWith("pay_") ? "pay" : key == "obs" ? "obs" : "main";
 
-    static string QuietText(HashSet<int> hours)
-    {
-        if (hours.Count == 0) return "выключены";
-        if (hours.Count == 24) return "круглосуточно";
-        var starts = hours.Where(h => !hours.Contains((h + 23) % 24)).OrderBy(h => h).ToList();
-        return string.Join(", ", starts.Select(s =>
-        {
-            int e = s;
-            while (hours.Contains((e + 1) % 24)) e = (e + 1) % 24;
-            return $"{s:00}:00–{(e + 1) % 24:00}:00";
-        }));
-    }
+    static string QuietText(HashSet<int> hours) => hours.Count == 0 ? "выключены" : QuietFmt.Display(hours);
 
     void ShowSettings(string chat)
     {
@@ -163,22 +152,14 @@ public partial class Bot
                 break;
             case "q_range":
             {
-                var hours = new HashSet<int>();
-                if (!(IsClear(v) || v.Equals("off", StringComparison.OrdinalIgnoreCase) || v.Equals("выкл", StringComparison.OrdinalIgnoreCase)))
-                    foreach (var part in v.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
-                    {
-                        var r = part.Split('-');
-                        if (r.Length == 2 && int.TryParse(r[0], out var a) && int.TryParse(r[1], out var b) && a is >= 0 and < 24 && b is >= 0 and < 24)
-                            for (int h = a; h != b; h = (h + 1) % 24) hours.Add(h);
-                        else if (int.TryParse(part, out var one) && one is >= 0 and < 24) hours.Add(one);
-                        else return $"«{part}»: нужен диапазон «23-8» (с 23:00 до 08:00), час «13» или слово off.";
-                    }
+                HashSet<int> hours;
+                if (IsClear(v) || v.Equals("off", StringComparison.OrdinalIgnoreCase) || v.Equals("выкл", StringComparison.OrdinalIgnoreCase)) hours = new HashSet<int>();
+                else if (!QuietFmt.TryParseRanges(v, out hours, out var badPart)) return $"«{badPart}»: нужен диапазон «23-8» (с 23:00 до 08:00), час «13» или слово off.";
                 _cfg.QuietHours = hours;
                 break;
             }
             case "q_dnd":
-                if (!TimeSpan.TryParseExact(v.Replace('.', ':'), new[] { @"h\:mm", @"hh\:mm" }, CultureInfo.InvariantCulture, out var t) || t >= TimeSpan.FromDays(1))
-                    return "Время в формате ЧЧ:ММ, например 08:00.";
+                if (!QuietFmt.TryParseTime(v, out var t)) return "Время в формате ЧЧ:ММ, например 08:00.";
                 _cfg.DndTime = t;
                 break;
             case "st_names":
